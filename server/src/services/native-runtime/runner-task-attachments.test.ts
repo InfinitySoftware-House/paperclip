@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { activityLog, agents, assets, companies, createDb, heartbeatRuns, issueAttachments, issues, runnerApiResponseReservations } from "@paperclipai/db";
+import { activityLog, agents, assets, companies, createDb, heartbeatRuns, issueAttachments, issues, projectAttachments, projects, runnerApiResponseReservations } from "@paperclipai/db";
 import { startEmbeddedPostgresTestDatabase } from "../../__tests__/helpers/embedded-postgres.js";
 import type { StorageService } from "../../storage/types.js";
 import { TaskAttachmentReadCache } from "./runner-task-attachments.js";
@@ -54,6 +54,34 @@ describe("Dot assigned-task attachment reading", () => {
     expect(logs).toHaveLength(1);
     expect(logs[0]).toMatchObject({ action: "dot.attachment_read", runId: f.runId });
     expect(JSON.stringify(logs)).not.toContain(f.body.toString());
+  });
+  it("also lists and reads reference files of the task's own project, and nothing from other projects", async () => {
+    const f = await fixture();
+    const [mine] = await db.insert(projects).values({ companyId: f.companyId, name: "Mine" }).returning();
+    const [theirs] = await db.insert(projects).values({ companyId: f.companyId, name: "Theirs" }).returning();
+    await db.update(issues).set({ projectId: mine!.id }).where(eq(issues.id, f.issueId));
+    const projectBody = Buffer.from("project handbook");
+    const add = async (projectId: string, name: string) => {
+      const [asset] = await db.insert(assets).values({ companyId: f.companyId, provider: "local_disk", objectKey: `${f.companyId}/${name}`,
+        originalFilename: name, contentType: "text/markdown", byteSize: projectBody.length, sha256: sha(projectBody) }).returning();
+      const [row] = await db.insert(projectAttachments).values({ companyId: f.companyId, projectId, assetId: asset!.id }).returning();
+      return row!;
+    };
+    const own = await add(mine!.id, "handbook.md"), other = await add(theirs!.id, "secret.md");
+    f.getObject.mockImplementation(async () => ({ stream: Readable.from([projectBody]) }));
+
+    const listed = await f.call("list_task_attachments") as { attachments: unknown[]; projectFiles: Array<{ attachmentId: string; filename: string }> };
+    expect(listed.attachments).toHaveLength(1);
+    expect(listed.projectFiles).toEqual([expect.objectContaining({ attachmentId: own.id, filename: "handbook.md" })]);
+    // A later page never repeats the project files.
+    expect(await f.call("list_task_attachments", { after: f.attachment.id })).not.toHaveProperty("projectFiles");
+
+    expect(await f.call("read_task_attachment", { attachmentId: own.id })).toMatchObject({ content: "project handbook", sha256: sha(projectBody) });
+    expect(await f.call("read_task_attachment", { attachmentId: other.id })).toMatchObject({ outcome: "failed", code: "runner_attachment_not_found" });
+  });
+  it("lists no project files for a task without a project", async () => {
+    const f = await fixture();
+    expect(await f.call("list_task_attachments")).not.toHaveProperty("projectFiles");
   });
   it("rejects another task, another company, and caller-supplied scope", async () => {
     const f = await fixture(), foreign = await fixture();

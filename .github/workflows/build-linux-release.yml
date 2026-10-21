@@ -2,8 +2,23 @@ name: Build Linux release
 
 # Builds the whole workspace on Linux x64 and publishes the built tree as a
 # release asset, so a small VPS can run it without compiling anything.
+#   pull request to main : build and verify only, nothing is published
+#   push to main (merge) : build, verify and publish a release
+#   manual               : same as a push
 on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "doc/**", "maps/**"]
+  pull_request:
+    branches: [main]
+    paths-ignore: ["**.md", "doc/**", "maps/**"]
   workflow_dispatch:
+
+# A newer push to the same pull request replaces its older build; a publishing
+# build is never cancelled half way.
+concurrency:
+  group: build-linux-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: write
@@ -52,6 +67,7 @@ jobs:
           node scripts/check-runtime-bundle-imports.mjs server/dist-runtime
 
       - name: Package built tree
+        if: github.event_name != 'pull_request'
         id: package
         run: |
           rm -rf packages/paperclip-runner/runner/target
@@ -70,6 +86,7 @@ jobs:
           echo "dir=$RUNNER_TEMP" >> "$GITHUB_OUTPUT"
 
       - name: Publish release
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -79,3 +96,11 @@ jobs:
             --notes "Built tree for Linux x64 from ${GITHUB_SHA}. If the archive is split into .partNN files, join them with cat before extracting." \
             "${{ steps.package.outputs.dir }}"/paperclip-linux-x64-* \
             "${{ steps.package.outputs.dir }}/SHA256SUMS"
+
+      # Each release is over 1 GB; keep the newest three.
+      - name: Remove old releases
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --limit 100 --json tagName,createdAt             --jq 'sort_by(.createdAt) | reverse | .[3:][].tagName'             | xargs -r -I{} gh release delete {} --cleanup-tag --yes

@@ -1684,6 +1684,9 @@ describe("sandbox callback bridge", () => {
       { method: "GET", path: "/api/issues/issue-1/attachments" },
       { method: "POST", path: "/api/companies/co-1/issues/issue-1/attachments" },
       { method: "GET", path: "/api/attachments/att-1/content" },
+      // Reference files uploaded to the task's project.
+      { method: "GET", path: "/api/projects/project-1/attachments" },
+      { method: "GET", path: "/api/project-attachments/file-1/content" },
     ];
     for (const request of http2Allowed) {
       expect(
@@ -1698,6 +1701,10 @@ describe("sandbox callback bridge", () => {
       // Extra path segment for each attachment rule.
       { method: "POST", path: "/api/companies/co-1/issues/issue-1/attachments/att-1" },
       { method: "GET", path: "/api/attachments/att-1/content/extra" },
+      // Project files are read-only for a sandboxed run.
+      { method: "POST", path: "/api/companies/co-1/projects/project-1/attachments" },
+      { method: "DELETE", path: "/api/project-attachments/file-1" },
+      { method: "GET", path: "/api/project-attachments/file-1/content/extra" },
     ];
     for (const request of http2Denied) {
       expect(

@@ -190,6 +190,8 @@ export const DEFAULT_SANDBOX_CALLBACK_BRIDGE_ROUTE_ALLOWLIST: readonly SandboxCa
   { method: "GET", path: /^\/api\/issues\/[^/]+\/attachments$/ },
   { method: "POST", path: /^\/api\/companies\/[^/]+\/issues\/[^/]+\/attachments$/ },
   { method: "GET", path: /^\/api\/attachments\/[^/]+\/content$/ },
+  { method: "GET", path: /^\/api\/projects\/[^/]+\/attachments$/ },
+  { method: "GET", path: /^\/api\/project-attachments\/[^/]+\/content$/ },
   { method: "GET", path: /^\/api\/assets\/[^/]+\/content$/ },
 
   // Work products: publish branch/commit/artifact metadata for completed work.

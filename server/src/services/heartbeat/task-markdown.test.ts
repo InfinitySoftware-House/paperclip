@@ -110,4 +110,43 @@ describe("heartbeat task markdown rendering", () => {
     expect(markdown).not.toContain("Implement the accepted plan");
     expect(markdown).not.toContain("old-approved-revision");
   });
+
+  describe("project reference files", () => {
+    const file = (n: number) => ({
+      id: `file-${n}`,
+      filename: `notes-${n}.md`,
+      contentType: "text/markdown",
+      byteSize: 100 + n,
+      contentPath: `/api/project-attachments/file-${n}/content`,
+    });
+
+    it("lists them with an API download directive for key-holding agents", () => {
+      const markdown = buildPaperclipTaskMarkdown({ issue, projectFiles: [file(1)] })!;
+      expect(markdown).toContain("Project reference files (uploaded to this task's project):");
+      expect(markdown).toContain('"filename":"notes-1.md"');
+      expect(markdown).toContain('"contentPath":"/api/project-attachments/file-1/content"');
+      expect(markdown).toContain("PAPERCLIP_API_KEY");
+    });
+
+    it("does not hand a native runner a download path it cannot use", () => {
+      const markdown = buildPaperclipTaskMarkdown({ issue, nativeRunner: true, projectFiles: [file(1)] })!;
+      expect(markdown).toContain('"filename":"notes-1.md"');
+      expect(markdown).not.toContain("/api/project-attachments/");
+      expect(markdown).toContain("read_task_attachment");
+      expect(markdown).not.toContain("PAPERCLIP_API_KEY");
+    });
+
+    it("is omitted from a compact resume delta and when there are none", () => {
+      expect(buildPaperclipTaskMarkdown({ issue, includeDescription: false, projectFiles: [file(1)] })).not.toContain("Project reference files");
+      expect(buildPaperclipTaskMarkdown({ issue, projectFiles: [] })).not.toContain("Project reference files");
+      expect(buildPaperclipTaskMarkdown({ issue })).not.toContain("Project reference files");
+    });
+
+    it("lists at most twenty and says how many were left out", () => {
+      const markdown = buildPaperclipTaskMarkdown({ issue, projectFiles: Array.from({ length: 23 }, (_, i) => file(i + 1)) })!;
+      expect(markdown).toContain("notes-20.md");
+      expect(markdown).not.toContain("notes-21.md");
+      expect(markdown).toContain("3 more project files are not listed here.");
+    });
+  });
 });

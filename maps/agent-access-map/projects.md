@@ -162,9 +162,12 @@ API: `present` — representative operation IDs:
 - `GET /api/project-attachments/{id}/content`.
 - `DELETE /api/project-attachments/{id}`.
 
-Agent access: `partial` — agents read the list through `projectAttachments` in
-`GET /api/issues/{id}/heartbeat-context` and download with the content path; upload and
-delete need the same grant as project workspace writes.
+Agent access: `partial` — the assignment text lists the task project's files. Agents with
+a Paperclip API key download them from the content path (also in `projectAttachments` of
+`GET /api/issues/{id}/heartbeat-context`); native runners with attachment access read them
+with `list_task_attachments` (`projectFiles`) and `read_task_attachment`. Sandboxed runs may
+read the list and content routes only. Upload and delete need the same grant as project
+workspace writes.
 
 Policy: Reads need `project:read` (also enforced on asset content); writes need
 `project:write_workspace`. Types and size follow the shared attachment allowlist.

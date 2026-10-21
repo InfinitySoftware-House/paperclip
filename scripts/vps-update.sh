@@ -106,14 +106,24 @@ mv "$NEW_DIR" "$INSTALL_DIR"
 sudo systemctl set-environment PAPERCLIP_MIGRATION_AUTO_APPLY=true
 sudo systemctl start "$SERVICE" || rollback
 
-log "Waiting for the server"
+log "Waiting for the server (up to 5 minutes; a small VPS can be slow to start)"
 healthy=0
-for _ in $(seq 1 60); do
-  if curl -fsS "http://127.0.0.1:$PORT/api/health" 2>/dev/null | grep -q "\"commit\": *\"$TARGET"; then healthy=1; break; fi
+body=""
+for _ in $(seq 1 150); do
+  body="$(curl -fsS "http://127.0.0.1:$PORT/api/health" 2>/dev/null || true)"
+  case "$body" in
+    *"\"commit\":\"$TARGET"*|*"\"commit\": \"$TARGET"*) healthy=1; break ;;
+  esac
   sleep 2
 done
 sudo systemctl unset-environment PAPERCLIP_MIGRATION_AUTO_APPLY || true
-[ "$healthy" = 1 ] || rollback
+if [ "$healthy" != 1 ]; then
+  echo "Last health answer: ${body:-<none>}" | cut -c1-300
+  echo "Service state: $(systemctl is-active "$SERVICE" || true)"
+  echo "--- last service log lines"
+  sudo journalctl -u "$SERVICE" -n 25 --no-pager | cut -c1-220 || true
+  rollback
+fi
 
 log "Cleaning up"
 rm -rf "$WORK_DIR/$TAG"

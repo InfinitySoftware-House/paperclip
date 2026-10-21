@@ -1,0 +1,70 @@
+name: Build Linux release
+
+# Builds the whole workspace on Linux x64 and publishes the built tree as a
+# release asset, so a small VPS can run it without compiling anything.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # pnpm is pinned by the packageManager field in package.json.
+      - run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build workspace
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          PAPERCLIP_BUILD_COMMIT: ${{ github.sha }}
+        run: pnpm build
+
+      # Same bundle the Docker production image starts with.
+      - name: Build server runtime bundle
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          PAPERCLIP_BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          pnpm --filter @paperclipai/server build:runtime
+          test -f server/dist-runtime/index.mjs
+          test -d ui/dist
+
+      - name: Package built tree
+        id: package
+        run: |
+          rm -rf packages/paperclip-runner/runner/target
+          NAME="paperclip-linux-x64-${GITHUB_SHA::8}.tar.gz"
+          tar --exclude=./.git -czf "$RUNNER_TEMP/$NAME" -C "$GITHUB_WORKSPACE" .
+          cd "$RUNNER_TEMP"
+          SIZE=$(stat -c %s "$NAME")
+          echo "Archive size: $SIZE bytes"
+          # A release asset is limited to 2 GiB; split when it would not fit.
+          if [ "$SIZE" -gt 1900000000 ]; then
+            split -b 1800M -d "$NAME" "$NAME.part"
+            rm "$NAME"
+          fi
+          sha256sum paperclip-linux-x64-* > SHA256SUMS
+          ls -la
+          echo "dir=$RUNNER_TEMP" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "linux-x64-${GITHUB_RUN_NUMBER}" \
+            --target "$GITHUB_SHA" \
+            --title "Linux x64 build ${GITHUB_SHA::8}" \
+            --notes "Built tree for Linux x64 from ${GITHUB_SHA}. If the archive is split into .partNN files, join them with cat before extracting." \
+            "${{ steps.package.outputs.dir }}"/paperclip-linux-x64-* \
+            "${{ steps.package.outputs.dir }}/SHA256SUMS"

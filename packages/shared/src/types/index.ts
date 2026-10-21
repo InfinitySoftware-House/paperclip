@@ -357,6 +357,7 @@ export type {
   ProjectRepository,
   ProjectRepositoryOptions,
   ProjectAccessMember,
+  ProjectAttachment,
   ProjectAccessSubjectType,
   ProjectDiscoverySummary,
   ProjectDiscoveryPage,

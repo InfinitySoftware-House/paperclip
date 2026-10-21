@@ -1,6 +1,7 @@
 import type {
   Project,
   ProjectAccessMember,
+  ProjectAttachment,
   ProjectRepositoryOptions,
   ProjectWorkspace,
   WorkspaceOperation,
@@ -20,6 +21,13 @@ function projectPath(id: string, companyId?: string, suffix = "") {
 }
 
 export const projectsApi = {
+  listAttachments: (id: string) => api.get<ProjectAttachment[]>(`/projects/${encodeURIComponent(id)}/attachments`),
+  uploadAttachment: (companyId: string, projectId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.postForm<ProjectAttachment>(`/companies/${companyId}/projects/${projectId}/attachments`, form);
+  },
+  deleteAttachment: (attachmentId: string) => api.delete<{ ok: true }>(`/project-attachments/${attachmentId}`),
   repositoryOptions: (companyId: string) => api.get<ProjectRepositoryOptions>(`/companies/${companyId}/project-repositories`),
   setRepositories: (id: string, repositoryIds: string[]) => api.put<Project>(projectPath(id, undefined, "/repositories"), { repositoryIds }),
   list: (companyId: string, opts: { includeArchived?: boolean } = {}) => {

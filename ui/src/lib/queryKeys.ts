@@ -509,6 +509,7 @@ export const queryKeys = {
       ] as const,
     detail: (id: string) => ["projects", "detail", id] as const,
     accessMembers: (id: string) => ["projects", "access-members", id] as const,
+    attachments: (id: string) => ["projects", "attachments", id] as const,
   },
   cases: {
     handoffs: (id: string) => ["cases", "handoffs", id] as const,

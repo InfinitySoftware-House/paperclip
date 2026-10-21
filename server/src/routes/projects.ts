@@ -55,11 +55,14 @@ import { appendWithCap } from "../adapters/utils.js";
 import { assertEnvironmentSelectionForCompany } from "./environment-selection.js";
 import { environmentService } from "../services/environments.js";
 import { secretService } from "../services/secrets.js";
+import type { StorageService } from "../storage/types.js";
+import { projectAttachmentService } from "../services/project-attachments.js";
+import { logger } from "../middleware/logger.js";
 
 const WORKSPACE_CONTROL_OUTPUT_MAX_CHARS = 256 * 1024;
 const SHARED_WORKSPACE_STOP_AND_RESTART_ACTIONS = new Set(["stop", "restart"]);
 
-export function projectRoutes(db: Db) {
+export function projectRoutes(db: Db, storage?: StorageService) {
   const router = Router();
   router.use(skillAccessRequestContext);
   const svc = projectService(db);
@@ -1035,10 +1038,19 @@ export function projectRoutes(db: Db) {
     const existing = await getAccessibleResource(req, res, svc.getById(id), "Project not found");
     if (!existing) return;
     if (!(await assertProjectReadAllowed(req, res, existing))) return;
+    const attachmentsSvc = projectAttachmentService(db);
+    const projectFiles = await attachmentsSvc.list(id);
     const project = await svc.remove(id);
     if (!project) {
       res.status(404).json({ error: "Project not found" });
       return;
+    }
+    // Attachment rows cascade with the project; drop their stored objects and assets too.
+    if (projectFiles.length) {
+      await Promise.all(projectFiles.map((file) =>
+        storage?.deleteObject(file.companyId, file.objectKey).catch((err) =>
+          logger.warn({ err, projectId: id, attachmentId: file.id }, "failed to delete project file object"))));
+      await attachmentsSvc.removeAssets(projectFiles.map((file) => file.assetId));
     }
 
     const actor = getActorInfo(req);

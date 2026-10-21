@@ -148,3 +148,31 @@ Evidence: `source-only` — reviewed at `9ef434fe79c57d976b8b03b14c5242db270b832
 Verification: `not-run` — Verify allowed creation and reads as the actual operator/agent, then compare project and task access after adding/removing a person. Reject ordinary members’ audience changes, agent member/visibility mutations, foreign-company targets, and owner removal. After opening the project, inspect protected tasks and independent direct grants rather than inferring task publication from project discovery.
 
 Gaps: The dedicated create_project tool does not advertise a visibility field; explicit private selection uses REST or admitted call_api. Private-project creation through each client, inherited task audiences, and responsible-user combinations need separate live evidence. The map does not infer filesystem isolation from these app-record permissions.
+
+## `files`
+
+Capability ID: `projects/files`.
+
+Review: `baseline`.
+
+API: `present` — representative operation IDs:
+
+- `GET /api/projects/{id}/attachments`.
+- `POST /api/companies/{companyId}/projects/{projectId}/attachments`.
+- `GET /api/project-attachments/{id}/content`.
+- `DELETE /api/project-attachments/{id}`.
+
+Agent access: `partial` — agents read the list through `projectAttachments` in
+`GET /api/issues/{id}/heartbeat-context` and download with the content path; upload and
+delete need the same grant as project workspace writes.
+
+Policy: Reads need `project:read` (also enforced on asset content); writes need
+`project:write_workspace`. Types and size follow the shared attachment allowlist.
+
+Evidence: `source-only` — [routes](../../server/src/routes/project-attachments.ts) and
+[access check](../../server/src/services/asset-content-access.ts).
+
+Verification: `not-run` — upload as board, read as an agent on a private and an open
+project, and assert denial for a non-member and a foreign company.
+
+Gaps: No live agent run has read a project file; PDF text extraction is not provided.

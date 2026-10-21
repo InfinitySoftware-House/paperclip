@@ -919,6 +919,7 @@ export type {
   AssetImage,
   Project,
   ProjectAccessMember,
+  ProjectAttachment,
   ProjectAccessSubjectType,
   ProjectDiscoverySummary,
   ProjectDiscoveryPage,

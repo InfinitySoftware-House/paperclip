@@ -11,6 +11,22 @@ export type ProjectWorkspaceVisibility = "default" | "advanced";
 export type ProjectVisibility = "open" | "private";
 export type ProjectAccessSubjectType = "user" | "agent";
 
+export interface ProjectAttachment {
+  id: string;
+  companyId: string;
+  projectId: string;
+  assetId: string;
+  contentType: string;
+  byteSize: number;
+  sha256: string;
+  originalFilename: string | null;
+  createdByAgentId: string | null;
+  createdByUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  contentPath: string;
+}
+
 export interface ProjectAccessMember {
   id: string;
   companyId: string;

@@ -240,6 +240,7 @@ import type {
   taskWatchdogService,
 } from "../services/task-watchdogs.js";
 import { logger } from "../middleware/logger.js";
+import { projectAttachmentService } from "../services/project-attachments.js";
 import {
   badRequest,
   conflict,
@@ -3434,6 +3435,7 @@ export function issueRoutes(
   const instanceSettings = instanceSettingsService(db);
   const agentsSvc = agentService(db);
   const projectsSvc = projectService(db);
+  const projectAttachmentsSvc = projectAttachmentService(db);
   const goalsSvc = goalService(db);
   const issueApprovalsSvc = issueApprovalService(db);
   const recoveryActionsSvc = issueRecoveryActionService(db);
@@ -8962,6 +8964,9 @@ export function issueRoutes(
       recoveryActionsSvc.getActiveForIssue(issue.companyId, issue.id),
     ]);
     const visibleProject = await visibleIssueProject(req, project);
+    const projectAttachments = visibleProject
+      ? await projectAttachmentsSvc.list(visibleProject.id)
+      : [];
     const recoveryActionsByRelationIssue = await relationRecoveryActionMap(
       recoveryActionsSvc,
       issue.companyId,
@@ -9063,6 +9068,15 @@ export function issueRoutes(
         contentType: a.contentType,
         byteSize: a.byteSize,
         contentPath: withContentPath(a).contentPath,
+        createdAt: a.createdAt,
+      })),
+      // Reference files uploaded to the project; fetch contentPath on demand.
+      projectAttachments: projectAttachments.map((a) => ({
+        id: a.id,
+        filename: a.originalFilename,
+        contentType: a.contentType,
+        byteSize: a.byteSize,
+        contentPath: `/api/project-attachments/${a.id}/content`,
         createdAt: a.createdAt,
       })),
       continuationSummary: safeContinuationSummary

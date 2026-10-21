@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { assets, caseAttachments, heartbeatRuns, issues, issueAttachments, runnerApiResponseReservations, type Db } from "@paperclipai/db";
+import { assets, caseAttachments, heartbeatRuns, issues, issueAttachments, projectAttachments, runnerApiResponseReservations, type Db } from "@paperclipai/db";
 import { isUuidLike } from "@paperclipai/shared";
 import { authorizationService, type AuthorizationActor } from "./authorization.js";
 import { canActorReadHeartbeatRun } from "./heartbeat-run-privacy.js";
@@ -54,6 +54,13 @@ export async function canActorReadAssetContent(db: Db, actor: AuthorizationActor
   for (const attachment of attachments) {
     if (!(await access.decide({ actor, action: "issue:read", resource: {
       type: "issue", companyId: asset.companyId, issueId: attachment.issueId,
+    } })).allowed) return false;
+  }
+  const projectLinks = await db.select({ projectId: projectAttachments.projectId }).from(projectAttachments)
+    .where(and(eq(projectAttachments.assetId, asset.id), eq(projectAttachments.companyId, asset.companyId)));
+  for (const link of projectLinks) {
+    if (!(await access.decide({ actor, action: "project:read", resource: {
+      type: "project", companyId: asset.companyId, projectId: link.projectId,
     } })).allowed) return false;
   }
   const caseLinks = await db.select({ caseId: caseAttachments.caseId }).from(caseAttachments)

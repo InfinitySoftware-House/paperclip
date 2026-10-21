@@ -19,6 +19,7 @@ Agent access: [companion](../agent-access-map/projects.md).
 - `repositories`: `projects/repositories` — configure repository/workspace sources and verify usable checkouts.
 - `defaults`: `projects/defaults` — maintain project instructions, environment, goal, and budget context where offered.
 - `privacy`: `projects/privacy` — create private projects, inspect access members, and manage their audience without publishing protected tasks.
+- `files`: `projects/files` — upload reference files (PDF, Markdown, images) in the project Files tab so agents can read them during runs.
 
 ## How to get to it (user POV)
 

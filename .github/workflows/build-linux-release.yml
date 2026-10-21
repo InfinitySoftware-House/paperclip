@@ -40,6 +40,17 @@ jobs:
           test -f server/dist-runtime/index.mjs
           test -d ui/dist
 
+      # The bundle imports some packages by absolute build path; make it
+      # relocatable so the tree can be unpacked anywhere, then prove it.
+      - name: Make runtime bundle relocatable
+        run: |
+          node scripts/relocate-runtime-bundle.mjs server/dist-runtime "$GITHUB_WORKSPACE"
+          if grep -rl "$GITHUB_WORKSPACE" server/dist-runtime; then
+            echo "absolute build paths remain in server/dist-runtime"; exit 1
+          fi
+          # Every relative import the bundle makes must exist on disk.
+          node scripts/check-runtime-bundle-imports.mjs server/dist-runtime
+
       - name: Package built tree
         id: package
         run: |

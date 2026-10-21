@@ -721,7 +721,6 @@ If `plan` already exists, first `GET /api/issues/{issueId}/documents/plan` and r
 | Issue documents (list/get/put)        | `GET\|PUT /api/issues/:issueId/documents[/:key]`                                                                                |
 | Create approval                       | `POST /api/companies/:companyId/approvals`                                                                                      |
 | Upload attachment (multipart, `file`) | `POST /api/companies/:companyId/issues/:issueId/attachments`                                                                    |
-| Project reference files (list / upload / delete) | `GET /api/projects/:projectId/attachments` • `POST /api/companies/:companyId/projects/:projectId/attachments` • `GET /api/project-attachments/:id/content` • `DELETE /api/project-attachments/:id` |
 | List / get / delete attachment        | `GET /api/issues/:issueId/attachments` • `GET\|DELETE /api/attachments/:attachmentId[/content]`                                 |
 | Execution workspace + runtime         | `GET /api/execution-workspaces/:id` • `POST …/runtime-services/:action`                                                         |
 | Set agent instructions path           | `PATCH /api/agents/:agentId/instructions-path`                                                                                  |

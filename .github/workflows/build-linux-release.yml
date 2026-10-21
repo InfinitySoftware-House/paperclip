@@ -69,6 +69,35 @@ jobs:
           # Every relative import the bundle makes must exist on disk.
           node scripts/check-runtime-bundle-imports.mjs server/dist-runtime
 
+      # Actually start the bundle: a rewrite that parses but throws at load time
+      # (an invalid URL, a missing asset) is only visible by running it.
+      - name: Smoke test the runtime bundle
+        env:
+          NODE_ENV: production
+          SERVE_UI: "true"
+          HOST: 127.0.0.1
+          PORT: "3199"
+          PAPERCLIP_INSTANCE_ID: smoke
+        run: |
+          export PAPERCLIP_HOME="$RUNNER_TEMP/paperclip-smoke"
+          node --test scripts/relocate-runtime-bundle.test.mjs
+          node server/dist-runtime/index.mjs > "$RUNNER_TEMP/smoke.log" 2>&1 &
+          SERVER_PID=$!
+          ok=0
+          for _ in $(seq 1 60); do
+            body="$(curl -fsS http://127.0.0.1:3199/api/health 2>/dev/null || true)"
+            case "$body" in *"\"commit\":\"$GITHUB_SHA"*) ok=1; break ;; esac
+            kill -0 "$SERVER_PID" 2>/dev/null || break
+            sleep 2
+          done
+          kill "$SERVER_PID" 2>/dev/null || true
+          if [ "$ok" != 1 ]; then
+            echo "bundle did not come up healthy with the expected commit; server log:"
+            tail -60 "$RUNNER_TEMP/smoke.log"
+            exit 1
+          fi
+          echo "bundle started and reports commit $GITHUB_SHA"
+
       - name: Package built tree
         if: github.event_name != 'pull_request'
         id: package

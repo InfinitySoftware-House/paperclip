@@ -131,7 +131,7 @@
   ],
   "devDependencies": {
     "@opentelemetry/context-async-hooks": "2.10.0",
-    "@opentelemetry/sdk-trace": "2.10.0",
+    "@opentelemetry/sdk-trace": "2.12.0",
     "@paperclipai/paperclip-runner": "workspace:*",
     "@types/compression": "^1.8.1",
     "@types/express": "^5.0.0",

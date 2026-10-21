@@ -92,6 +92,7 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_DEBUG: api
         run: |
           gh release create "linux-x64-${GITHUB_RUN_NUMBER}" \
             --target "$GITHUB_SHA" \

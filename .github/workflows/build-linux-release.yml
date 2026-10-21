@@ -60,7 +60,8 @@ jobs:
       - name: Make runtime bundle relocatable
         run: |
           node scripts/relocate-runtime-bundle.mjs server/dist-runtime "$GITHUB_WORKSPACE"
-          if grep -rl "$GITHUB_WORKSPACE" server/dist-runtime; then
+          # Source maps keep the build path for debugging and are never loaded.
+          if grep -rl --include='*.mjs' --include='*.js' --include='*.cjs' "$GITHUB_WORKSPACE" server/dist-runtime; then
             echo "absolute build paths remain in server/dist-runtime"; exit 1
           fi
           # Every relative import the bundle makes must exist on disk.

@@ -8243,6 +8243,44 @@ registry.registerPath({
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
+// ─── Project files ────────────────────────────────────────────────────────────
+
+registry.registerPath({
+  method: "get",
+  path: "/api/projects/{id}/attachments",
+  tags: ["projects"],
+  summary: "List a project's reference files",
+  request: { params: z.object({ id: z.string() }) },
+  responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/companies/{companyId}/projects/{projectId}/attachments",
+  tags: ["projects"],
+  summary: "Upload a reference file to a project (multipart, field 'file')",
+  request: { params: z.object({ companyId: z.string(), projectId: z.string() }) },
+  responses: { 201: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound, 422: r.unprocessable },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/project-attachments/{attachmentId}/content",
+  tags: ["projects"],
+  summary: "Download a project file",
+  request: { params: z.object({ attachmentId: z.string() }) },
+  responses: { 200: { description: "File content" }, 401: r.unauthorized, 404: r.notFound },
+});
+
+registry.registerPath({
+  method: "delete",
+  path: "/api/project-attachments/{attachmentId}",
+  tags: ["projects"],
+  summary: "Delete a project file",
+  request: { params: z.object({ attachmentId: z.string() }) },
+  responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
+});
+
 // ─── Assets ──────────────────────────────────────────────────────────────────
 
 registry.registerPath({

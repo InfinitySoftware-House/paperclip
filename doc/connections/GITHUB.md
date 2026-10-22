@@ -89,6 +89,8 @@ and webhook binding uses the same order:
 
 An unavailable or ambiguous managed identity fails visibly. It never falls
 through to another person, an organization credential, or a legacy token.
+GitLab and Gitea connections follow the same order per instance host; see
+[GITLAB-GITEA.md](GITLAB-GITEA.md).
 Agent grants are company-scoped, have exactly one `subjectAgentId`, cannot be
 organization defaults, and are installed only for that agent.
 

@@ -52,7 +52,7 @@ test('creating a project imports repository skills without another setup flow', 
   await page.getByRole('button', { name: 'Add Project', exact: true }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Create project', exact: true });
   await dialog.getByRole('textbox', { name: 'Project name', exact: true }).fill('Repository project');
-  await dialog.getByRole('button', { name: 'Add GitHub repo', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Add repo', exact: true }).click();
   await page.getByRole('option', { name: 'acme/team-skills My GitHub account · Acme engineering', exact: true }).click();
   await dialog.getByRole('button', { name: 'Create project', exact: true }).click();
   await expect(dialog).toHaveCount(0);

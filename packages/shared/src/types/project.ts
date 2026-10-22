@@ -5,6 +5,7 @@ import type {
   WorkspaceRuntimeService,
 } from "./workspace-runtime.js";
 import type { AgentEnvConfig } from "./secrets.js";
+import type { GitHostingProvider } from "../git-hosting.js";
 
 export type ProjectWorkspaceSourceType = "local_path" | "git_repo" | "remote_managed" | "non_git_path";
 export type ProjectWorkspaceVisibility = "default" | "advanced";
@@ -161,10 +162,15 @@ export interface Project {
   updatedAt: Date;
 }
 
-/** GitHub identity is the provider's stable repository ID, never a credential. */
+/**
+ * Identity is the provider's stable repository ID, never a credential. GitHub
+ * IDs are bare numbers; GitLab and Gitea IDs are `provider:host:id`.
+ */
 export interface ProjectRepository {
   id: string;
   fullName: string;
+  /** Absent on GitHub observations recorded before multi-provider support. */
+  provider?: GitHostingProvider;
   /** Provider-confirmed ownership; absent on older repository observations. */
   ownerType?: "personal" | "organization";
   url: string;

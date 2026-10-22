@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "slug": "gitea",
+  "name": "Gitea",
+  "description": "Give agents Git access to repositories on a Gitea or Forgejo instance.",
+  "categories": [
+    "developer"
+  ],
+  "featured": false,
+  "urlPatterns": [
+    "https://gitea.com/*",
+    "https://codeberg.org/*"
+  ],
+  "docsUrl": "https://docs.gitea.com/development/api-usage",
+  "methods": [
+    {
+      "key": "access-token",
+      "label": "Access token",
+      "purpose": "tool",
+      "transport": "rest_api",
+      "auth": "api_key",
+      "ownershipModes": [
+        "customer"
+      ],
+      "grantKinds": [
+        "organization",
+        "user",
+        "agent"
+      ],
+      "whenToUse": "Use an access token for clone, fetch, and push on one Gitea or Forgejo instance.",
+      "defaults": {},
+      "guidanceMd": "In Gitea, open Settings → Applications and generate a token with `read:user` and read/write `repository` permissions. Choose a dedicated agent to give one agent its own Gitea identity.",
+      "riskTier": "S3",
+      "tenantFields": [
+        {
+          "key": "instanceUrl",
+          "label": "Gitea URL",
+          "type": "text",
+          "required": true,
+          "placeholder": "https://gitea.example.com",
+          "helperMd": "Use the HTTPS address of your Gitea or Forgejo instance, for example `https://gitea.com` or `https://codeberg.org`. A repository link or clone URL from the instance also works.",
+          "validation": {
+            "pattern": "^\\S+$",
+            "maxLength": 255
+          }
+        }
+      ],
+      "credentialFields": [
+        {
+          "key": "token",
+          "label": "Gitea access token",
+          "type": "password",
+          "required": true,
+          "placeholder": "Paste the access token",
+          "secret": true
+        }
+      ],
+      "keyPlacement": {
+        "location": "header",
+        "name": "Authorization",
+        "prefix": "token "
+      },
+      "consoleLinks": {
+        "docs": "https://docs.gitea.com/development/api-usage"
+      },
+      "warnings": [
+        "Shell Git receives this token for the Gitea host during the run and is not constrained by per-tool Ask-first controls."
+      ]
+    }
+  ]
+}

@@ -14,6 +14,7 @@ import {
   buildGitAuthInvocation,
   resolveManagedGitHubCredential,
 } from "./git-credentials.js";
+import { buildGitHostAuthConfig, resolveGitHostCredentials, type GitHostAuthConfig } from "./git-host-credentials.js";
 import { secretService } from "./secrets.js";
 import { resolveCoreTrustPreset } from "./trust-preset-resolver.js";
 import { isLowTrustQuarantined } from "./source-trust.js";
@@ -103,6 +104,67 @@ async function allowsGitHubCredentialExport(
   );
 }
 
+/** The same gate for any provider token a run-bound Git operation would receive. */
+export async function runAllowsGitCredentialExport(
+  db: Db,
+  input: { companyId: string; agentId: string; runId: string },
+) {
+  const [run] = await db
+    .select()
+    .from(heartbeatRuns)
+    .where(
+      and(
+        eq(heartbeatRuns.id, input.runId),
+        eq(heartbeatRuns.companyId, input.companyId),
+        eq(heartbeatRuns.agentId, input.agentId),
+      ),
+    );
+  return Boolean(run) && (await allowsGitHubCredentialExport(db, run!));
+}
+
+export type GitHostOperationCredentials = GitHostAuthConfig & {
+  hosts: Array<{
+    host: string;
+    provider: "gitlab" | "gitea";
+    status: "available" | "unavailable";
+    source?: "dedicated" | "personal" | "organization";
+    reason?: string;
+  }>;
+};
+
+const NO_GIT_HOSTS: GitHostOperationCredentials = { config: [], env: {}, hosts: [] };
+
+/**
+ * GitLab/Gitea credentials for the same operation. Resolution failures stay per host
+ * and never affect the GitHub result; reasons are fixed strings, never provider bodies.
+ */
+async function resolveGitHostOperationCredentials(
+  db: Db,
+  input: { companyId: string; agentId: string; runId: string },
+  run: typeof heartbeatRuns.$inferSelect,
+  responsibleUserId: string | null,
+): Promise<GitHostOperationCredentials> {
+  try {
+    const selections = await resolveGitHostCredentials(db, input.companyId, {
+      agentId: input.agentId,
+      heartbeatRunId: input.runId,
+      responsibleUserId,
+      allowStandingDelegation: false,
+      issueId: typeof run.contextSnapshot?.issueId === "string" ? run.contextSnapshot.issueId : null,
+    });
+    if (selections.length === 0) return NO_GIT_HOSTS;
+    const available = selections.flatMap((selection) => selection.credential ? [selection.credential] : []);
+    return {
+      ...buildGitHostAuthConfig(available),
+      hosts: selections.map((selection) => selection.credential
+        ? { host: selection.host, provider: selection.provider, status: "available" as const, source: selection.credential.identitySource }
+        : { host: selection.host, provider: selection.provider, status: "unavailable" as const, reason: selection.error }),
+    };
+  } catch {
+    return NO_GIT_HOSTS;
+  }
+}
+
 /** No company secrets or ambient credentials are consulted by this path. */
 export async function resolveGitHubOperationCredentials(
   db: Db,
@@ -135,8 +197,14 @@ export async function resolveGitHubOperationCredentials(
       revision: context.revision,
       ...summary,
       env,
+      gitHosts: NO_GIT_HOSTS,
     };
   }
+  const responsibleUserId =
+    context?.cause === "company_default"
+      ? null
+      : (context?.responsibleUserId ?? null);
+  const gitHostsPromise = resolveGitHostOperationCredentials(db, input, run, responsibleUserId);
   try {
     const resolved = await resolveManagedGitHubCredential(
       db,
@@ -146,10 +214,7 @@ export async function resolveGitHubOperationCredentials(
         agentId: input.agentId,
         heartbeatRunId: input.runId,
         allowStandingDelegation: false,
-        responsibleUserId:
-          context?.cause === "company_default"
-            ? null
-            : (context?.responsibleUserId ?? null),
+        responsibleUserId,
         issueId:
           typeof run.contextSnapshot?.issueId === "string"
             ? run.contextSnapshot.issueId
@@ -190,5 +255,6 @@ export async function resolveGitHubOperationCredentials(
     revision: context?.revision ?? null,
     ...summary,
     env,
+    gitHosts: await gitHostsPromise,
   };
 }

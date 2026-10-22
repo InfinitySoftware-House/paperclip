@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "slug": "gitlab",
+  "name": "GitLab",
+  "description": "Give agents Git access to GitLab repositories on GitLab.com or a self-managed instance.",
+  "categories": [
+    "developer"
+  ],
+  "featured": false,
+  "urlPatterns": [
+    "https://gitlab.com/*"
+  ],
+  "docsUrl": "https://docs.gitlab.com/user/profile/personal_access_tokens/",
+  "methods": [
+    {
+      "key": "access-token",
+      "label": "Access token",
+      "purpose": "tool",
+      "transport": "rest_api",
+      "auth": "api_key",
+      "ownershipModes": [
+        "customer"
+      ],
+      "grantKinds": [
+        "organization",
+        "user",
+        "agent"
+      ],
+      "whenToUse": "Use a personal, project, or group access token for clone, fetch, and push on one GitLab instance.",
+      "defaults": {},
+      "guidanceMd": "Create an access token with the `read_api`, `read_repository`, and `write_repository` scopes. Choose a dedicated agent to give one agent its own GitLab identity.",
+      "riskTier": "S3",
+      "tenantFields": [
+        {
+          "key": "instanceUrl",
+          "label": "GitLab URL",
+          "type": "text",
+          "required": true,
+          "placeholder": "https://gitlab.com",
+          "defaultValue": "https://gitlab.com",
+          "helperMd": "Use `https://gitlab.com` or the HTTPS address of your self-managed GitLab. A repository link or clone URL from the instance also works.",
+          "validation": {
+            "pattern": "^\\S+$",
+            "maxLength": 255
+          }
+        }
+      ],
+      "credentialFields": [
+        {
+          "key": "token",
+          "label": "GitLab access token",
+          "type": "password",
+          "required": true,
+          "placeholder": "glpat-...",
+          "secret": true
+        }
+      ],
+      "keyPlacement": {
+        "location": "header",
+        "name": "Authorization",
+        "prefix": "Bearer "
+      },
+      "consoleLinks": {
+        "keys": "https://gitlab.com/-/user_settings/personal_access_tokens",
+        "docs": "https://docs.gitlab.com/user/profile/personal_access_tokens/"
+      },
+      "warnings": [
+        "Shell Git receives this token for the GitLab host during the run and is not constrained by per-tool Ask-first controls."
+      ]
+    }
+  ]
+}

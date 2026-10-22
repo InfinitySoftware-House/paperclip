@@ -24,6 +24,7 @@ import {
   isUuidLike,
   matchWorkspaceRuntimeServiceToCommand,
   normalizeProjectUrlKey,
+  PROJECT_REPOSITORY_ID_PATTERN,
   updateProjectSchema,
   updateProjectWorkspaceSchema,
   workspaceRuntimeControlTargetSchema,
@@ -299,7 +300,7 @@ export function projectRoutes(db: Db, storage?: StorageService) {
     res.json(await toolAccessService(db).listProjectRepositories(companyId, viewer.userId, viewer.localTrusted));
   });
 
-  router.put("/projects/:id/repositories", validate(z.object({ repositoryIds: z.array(z.string().regex(/^\d+$/)) })), async (req, res) => {
+  router.put("/projects/:id/repositories", validate(z.object({ repositoryIds: z.array(z.string().regex(PROJECT_REPOSITORY_ID_PATTERN)) })), async (req, res) => {
     assertBoard(req);
     const project = await getAccessibleResource(req, res, svc.getById(req.params.id as string), "Project not found");
     if (!project) return;
@@ -446,7 +447,10 @@ export function projectRoutes(db: Db, storage?: StorageService) {
       for (const repo of urlRepositories) {
         if (attachedUrls.has(repo.url.toLowerCase())) continue;
         attachedUrls.add(repo.url.toLowerCase());
-        await service.createWorkspace(project.id, { name: repo.fullName, repoUrl: repo.url });
+        await service.createWorkspace(project.id, {
+          name: repo.fullName, repoUrl: repo.url,
+          ...(repo.provider ? { metadata: { repositoryProvider: repo.provider } } : {}),
+        });
         registeredUrls.push(repo);
       }
       const createdWorkspace = workspace ? await service.createWorkspace(project.id, workspace) : null;

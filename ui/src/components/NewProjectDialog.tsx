@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { PROJECT_COLORS, type ProjectRepository } from "@paperclipai/shared";
+import { PROJECT_COLORS, type GitHostingProvider, type ProjectRepository } from "@paperclipai/shared";
 import { X } from "lucide-react";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
@@ -11,6 +11,7 @@ import { ProjectTile } from "./ProjectTile";
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { ProjectRepositoryInput, repositoryOptionsKey } from "./ProjectRepositoryInput";
+import { GIT_PROVIDER_LABELS } from "./GitProviderIcon";
 import { ConnectionSetupFlow } from "@/features/connections/ConnectionSetupFlow";
 
 export function NewProjectDialog() {
@@ -25,7 +26,7 @@ export function NewProjectForm({ companyId, onClose }: { companyId: string; onCl
   const [name, setName] = useState("");
   const [color] = useState(() => PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)]!);
   const [repos, setRepos] = useState<ProjectRepository[]>([]);
-  const [connecting, setConnecting] = useState(false);
+  const [connecting, setConnecting] = useState<GitHostingProvider | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const create = useMutation({
     mutationFn: () => projectsApi.create(companyId, { name: name.trim(), color, status: "planned", repositoryIds: repos.map((repo) => repo.id) }),
@@ -40,10 +41,10 @@ export function NewProjectForm({ companyId, onClose }: { companyId: string; onCl
       className="flex max-h-(--sz-calc-18) flex-col gap-0 overflow-hidden p-0 shadow-sm sm:max-w-lg"
       onOpenAutoFocus={(event) => { event.preventDefault(); input.current?.focus(); }}>
       {connecting ? <div className="min-h-0 overflow-y-auto p-5">
-        <DialogTitle className="sr-only">Connect GitHub</DialogTitle>
-        <ConnectionSetupFlow host="dialog" serviceSlug="github" forceNewConnection onCancel={() => setConnecting(false)} onComplete={() => {
+        <DialogTitle className="sr-only">Connect {GIT_PROVIDER_LABELS[connecting]}</DialogTitle>
+        <ConnectionSetupFlow key={connecting} host="dialog" serviceSlug={connecting} forceNewConnection onCancel={() => setConnecting(null)} onComplete={() => {
           void client.invalidateQueries({ queryKey: repositoryOptionsKey(companyId) });
-          setConnecting(false);
+          setConnecting(null);
         }} />
       </div> : <form className="flex min-h-0 flex-col overflow-hidden" onSubmit={(event) => { event.preventDefault(); if (name.trim() && !create.isPending) create.mutate(); }}>
         <div className="flex shrink-0 flex-col gap-4 px-5 pb-4 pt-5">
@@ -58,7 +59,7 @@ export function NewProjectForm({ companyId, onClose }: { companyId: string; onCl
           </div>
         </div>
         <div role="region" aria-label="Source repositories" tabIndex={0} className="min-h-0 overflow-y-auto overscroll-contain px-5 pb-1 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring">
-          <ProjectRepositoryInput companyId={companyId} selected={repos} onChange={setRepos} onConnect={() => setConnecting(true)} disabled={create.isPending} />
+          <ProjectRepositoryInput companyId={companyId} selected={repos} onChange={setRepos} onConnect={setConnecting} disabled={create.isPending} />
         </div>
         {create.isError && <p role="alert" className="px-5 pt-3 text-sm text-destructive">{create.error.message}</p>}
         <div className="flex shrink-0 justify-end gap-2 px-5 py-5">

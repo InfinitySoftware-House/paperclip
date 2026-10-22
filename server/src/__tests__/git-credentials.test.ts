@@ -94,14 +94,27 @@ describe("createGitRemoteAuthProvider", () => {
     expect(invocation?.env.GIT_CONFIG_KEY_3).toBe("url.https://github.com/.insteadOf");
   });
 
-  it("returns null for non-GitHub URLs without touching the secret store", async () => {
+  it("never sends the GitHub token to other hosts", async () => {
     const secrets = buildSecretsFake({ GITHUB_TOKEN: "token" });
     const provider = createGitRemoteAuthProvider(fakeDb, "company-1", undefined, {
       secrets,
-      env: {},
+      env: { GITHUB_TOKEN: "env-token" },
     });
     await expect(provider("https://gitlab.com/example/repo.git")).resolves.toBeNull();
-    expect(secrets.getByName).not.toHaveBeenCalled();
+    await expect(provider("https://git.example.com/example/repo.git")).resolves.toBeNull();
+    expect(secrets.getByName.mock.calls.map(([, name]) => name)).toEqual(["GITLAB_TOKEN", "PAPERCLIP_GITLAB_TOKEN"]);
+    expect(secrets.resolveSecretValue).not.toHaveBeenCalled();
+  });
+
+  it("uses a GITLAB_TOKEN company secret for gitlab.com only, scoped to that host", async () => {
+    const secrets = buildSecretsFake({ GITLAB_TOKEN: "glpat-company" });
+    const provider = createGitRemoteAuthProvider(fakeDb, "company-1", undefined, { secrets, env: {} });
+    const auth = await provider("https://gitlab.com/example/repo.git");
+    expect(auth).toMatchObject({ source: "company_secret", secretName: "GITLAB_TOKEN", provider: "gitlab" });
+    expect(auth!.env.PAPERCLIP_GIT_HOST_TOKEN_0).toBe("glpat-company");
+    expect(auth!.env.GIT_CONFIG_KEY_1).toBe("credential.https://gitlab.com.helper");
+    expect(auth!.configArgs.join(" ")).not.toContain("glpat-company");
+    await expect(provider("https://gitlab.example.com/example/repo.git")).resolves.toBeNull();
   });
 
   it("memoizes the credential lookup across calls", async () => {

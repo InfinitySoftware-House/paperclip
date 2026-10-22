@@ -3,6 +3,7 @@ import { PROJECT_STATUSES, PROJECT_ICON_NAMES } from "../constants.js";
 import { envConfigSchema } from "./secret.js";
 import { trustAuthorizationPolicySchema } from "./trust-policy.js";
 import { objectWithoutDefaults } from "./partial.js";
+import { PROJECT_REPOSITORY_ID_PATTERN } from "../git-hosting.js";
 
 export const projectDiscoverySchema = z.object({
   limit: z.number().int().min(1).max(50).default(50),
@@ -127,7 +128,7 @@ export const createProjectSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(255).optional(),
   ...projectFields,
   workspace: createProjectWorkspaceSchema.optional(),
-  repositoryIds: z.array(z.string().regex(/^\d+$/)).optional(),
+  repositoryIds: z.array(z.string().regex(PROJECT_REPOSITORY_ID_PATTERN)).optional(),
   repositoryUrls: z.array(z.string().url().max(2000)).max(100).optional(),
 });
 

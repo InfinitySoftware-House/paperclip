@@ -9,7 +9,7 @@ import { withRunExecutionTiming, measureRunPhase, measureWorkspaceSyncPhase, isW
 import { createHeartbeatPreparationTiming } from "./heartbeat/preparation-timing.js";
 import { createHeartbeatInstructionCopyRelease, createHeartbeatInstructionWorkingCopy } from "./heartbeat/instruction-working-copy.js";
 import { prepareHeartbeatRuntimeServiceIntents, startHeartbeatRuntimeServices, recordHeartbeatAdapterRuntimeServices } from "./heartbeat/runtime-services.js";
-import { bindHeartbeatRunnerHomeMode, prepareHeartbeatExecutionConfiguration } from "./heartbeat/execution-configuration.js";
+import { applyHostModeGitHostCredentials, bindHeartbeatRunnerHomeMode, prepareHeartbeatExecutionConfiguration } from "./heartbeat/execution-configuration.js";
 import { createHeartbeatRunOutput } from "./heartbeat/run-output.js";
 import { prepareHeartbeatSession, resolveHeartbeatAdapterSession } from "./heartbeat/session-preparation.js";
 import { prepareHeartbeatTaskContext } from "./heartbeat/task-context.js";
@@ -2895,7 +2895,13 @@ export function heartbeatService(
       runtimeConfig = { ...runtimeConfig, env: gitExecutionEnv };
       for (const key of MANAGED_GITHUB_TOKEN_KEYS) secretKeys.add(key);
       context.githubAuthenticationMode = useHostGitHub ? "host" : "managed";
-      if (!useHostGitHub) {
+      if (useHostGitHub) {
+        const hostGit = await timePreparation("git_host_credentials", () => applyHostModeGitHostCredentials(db, {
+          companyId: agent.companyId, agentId: agent.id, runId: run.id, responsibleUserId: responsibleUserId ?? null, issueId: issueId ?? null,
+        }, gitExecutionEnv));
+        runtimeConfig = { ...runtimeConfig, env: hostGit.env };
+        for (const key of hostGit.secretKeys) secretKeys.add(key);
+      } else {
         const githubLaunchers = await timePreparation("github_launchers", () => prepareHeartbeatGitHubLaunchers({
           native: agent.adapterType === "paperclip_runner",
           githubConfigured: githubSelection.configured,

@@ -34,7 +34,7 @@ async function main() {
   } catch { diagnostic('configuration_directory_unavailable'); }
   {
     for (const key of Object.keys(env)) {
-      if (/^(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|PAPERCLIP_GIT_TOKEN|GIT_AUTHOR_.*|GIT_COMMITTER_.*|GIT_CONFIG_.*|GIT_ASKPASS|SSH_ASKPASS|SSH_AUTH_SOCK|GIT_SSH.*)$/.test(key)) delete env[key];
+      if (/^(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|PAPERCLIP_GIT_TOKEN|PAPERCLIP_GIT_HOST_TOKEN_\d+|GIT_AUTHOR_.*|GIT_COMMITTER_.*|GIT_CONFIG_.*|GIT_ASKPASS|SSH_ASKPASS|SSH_AUTH_SOCK|GIT_SSH.*)$/.test(key)) delete env[key];
     }
     Object.assign(env, {
       GH_CONFIG_DIR: configDirectory, SSH_AUTH_SOCK: '',
@@ -95,6 +95,23 @@ async function main() {
           if (/^(GH_TOKEN|GITHUB_TOKEN|PAPERCLIP_GIT_TOKEN|GIT_TERMINAL_PROMPT|GIT_AUTHOR_(NAME|EMAIL)|GIT_COMMITTER_(NAME|EMAIL)|GIT_CONFIG_COUNT|GIT_CONFIG_(KEY|VALUE)_\d+)$/.test(key) && typeof value === 'string') env[key] = value;
         }
       }
+      // GitLab/Gitea hosts are appended after GitHub's entries. Only host-scoped
+      // credential helpers and HTTPS rewrites are accepted, with their token vars.
+      const gitHosts = result.gitHosts;
+      if (gitHosts && Array.isArray(gitHosts.config) && gitHosts.config.length > 0) {
+        let count = Number.parseInt(env.GIT_CONFIG_COUNT || '0', 10) || 0;
+        for (const entry of gitHosts.config) {
+          if (!Array.isArray(entry) || typeof entry[0] !== 'string' || typeof entry[1] !== 'string') continue;
+          if (!/^(credential\.https:\/\/[a-z0-9.:-]+\.helper|url\.https:\/\/[a-z0-9.:-]+\/\.insteadOf)$/.test(entry[0])) continue;
+          env['GIT_CONFIG_KEY_' + count] = entry[0];
+          env['GIT_CONFIG_VALUE_' + count] = entry[1];
+          count += 1;
+        }
+        env.GIT_CONFIG_COUNT = String(count);
+        for (const [key, value] of Object.entries(gitHosts.env || {})) {
+          if (/^PAPERCLIP_GIT_HOST_TOKEN_\d+$/.test(key) && typeof value === 'string') env[key] = value;
+        }
+      }
       }
     } else { diagnostic('capability_missing'); }
     } catch { diagnostic('broker_transport_unavailable'); }
@@ -122,7 +139,7 @@ export function githubBrokerEnvironment(input: Record<string, unknown>, broker: 
   for (const [key, value] of Object.entries(input)) if (typeof value === "string") env[key] = value;
   for (const key of ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "PAPERCLIP_GIT_TOKEN", "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_CONFIG_COUNT", "PAPERCLIP_GITHUB_OPERATION_ACTIVE"]) env[key] = "";
   for (const key of Object.keys(env)) {
-    if (/^GIT_CONFIG_(KEY|VALUE)_\d+$/.test(key)) env[key] = "";
+    if (/^(GIT_CONFIG_(KEY|VALUE)_\d+|PAPERCLIP_GIT_HOST_TOKEN_\d+)$/.test(key)) env[key] = "";
   }
   env.GIT_CONFIG_GLOBAL = "/dev/null";
   env.GIT_CONFIG_SYSTEM = "/dev/null";

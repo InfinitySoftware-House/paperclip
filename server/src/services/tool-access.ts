@@ -30,6 +30,9 @@ import {
   emitConnectionUpdated,
 } from "./connector-telemetry.js";
 import { canBrowseProjectRepositoryGrant, mergeProjectRepository } from "./project-repositories.js";
+import { GIT_HOST_CONNECTION_DEFAULT_HOSTS, isGitHostConnectionProvider } from "@paperclipai/shared";
+import { GIT_HOST_TOKEN_CONFIG_PATH, gitHostConnectionInfo, gitHostConnectionProvider, gitHostProviderLabel } from "./git-host-credentials.js";
+import { assertGitHostInstanceUrl, discoverGitHostInstance, loadGitHostRepositories } from "./git-host-api.js";
 import { captureRunIdentity } from "./run-identity.js";
 import { measureRunPhase } from "./execution-preparation-timing.js";
 import { measureRunTransaction } from "./execution-transaction-timing.js";
@@ -7548,6 +7551,48 @@ export function toolAccessService(
     await agentmailApi(key).whoami();
   }
 
+  /**
+   * The token a GitLab/Gitea health check or repository listing uses: the caller's own
+   * grant, else the company or a dedicated agent grant, else the sole personal grant for
+   * an actorless background check. Rows predating grants keep the token on the connection.
+   */
+  async function gitHostConnectionToken(
+    connection: typeof toolConnections.$inferSelect,
+    actor?: ActorInfo,
+    grant?: typeof connectionGrants.$inferSelect | null,
+  ): Promise<string> {
+    let selected = grant ?? null;
+    if (!selected) {
+      const grants = await db.select().from(connectionGrants).where(and(
+        eq(connectionGrants.companyId, connection.companyId),
+        eq(connectionGrants.connectionId, connection.id),
+        eq(connectionGrants.status, "active"),
+      )).orderBy(desc(connectionGrants.createdAt));
+      const actorUserId = actor?.actorType === "user" ? actor.actorId ?? null : null;
+      const personal = grants.filter((candidate) => candidate.kind === "user");
+      selected = personal.find((candidate) => candidate.subjectUserId === actorUserId)
+        ?? grants.find((candidate) => candidate.kind === "organization")
+        ?? grants.find((candidate) => candidate.kind === "agent")
+        ?? (!actorUserId && personal.length === 1 ? personal[0]! : null);
+      if (!selected && grants.length > 0) {
+        throw unprocessable("This connection needs the current user's authorization", {
+          code: "user_authorization_required",
+          setupUrl: connectionSetupUrl(connection),
+          reconnectUrl: connectionReconnectUrl(connection),
+        });
+      }
+    }
+    if (selected) {
+      const ref = selected.credentialSecretRefs.find((candidate) => candidate.configPath === GIT_HOST_TOKEN_CONFIG_PATH);
+      if (!ref) throw unprocessable("Reconnect this connection to restore its access token", { code: "missing_secret" });
+      return (await resolveOAuthGrantSecret(connection, selected, ref, actor, undefined)).value.trim();
+    }
+    const authorization = (await resolveCredentialHeaders(connection, actor)).Authorization ?? "";
+    const token = authorization.replace(/^(?:Bearer|token)\s+/i, "").trim();
+    if (!token) throw unprocessable("Reconnect this connection to restore its access token", { code: "missing_secret" });
+    return token;
+  }
+
   function assertSupportedConnection(connection: typeof toolConnections.$inferSelect) {
     if (isRetiredComposioConnection(connection)) {
       throw unprocessable(RETIRED_COMPOSIO_MESSAGE, { code: "composio_broker_retired" });
@@ -7574,6 +7619,26 @@ export function toolAccessService(
     }
     if (isAgentMailConnection(connection)) {
       await validateAgentMailConnection(connection);
+      return [];
+    }
+    const gitHostProvider = connection.transport === "rest_api" ? gitHostConnectionProvider(connection) : null;
+    if (gitHostProvider) {
+      // GitLab/Gitea connections authenticate Git only; they expose no agent actions.
+      const methodConfig = asRecord(connection.config.methodConfig);
+      const configured = typeof methodConfig.instanceUrl === "string" ? methodConfig.instanceUrl : "";
+      const { info } = await discoverGitHostInstance(gitHostProvider,
+        configured || `https://${GIT_HOST_CONNECTION_DEFAULT_HOSTS[gitHostProvider]}`,
+        await gitHostConnectionToken(connection, actor),
+        (url, init) => requestRemoteHttpEndpoint(url, init));
+      if (info.baseUrl !== configured) {
+        // Store the confirmed instance base, so a pasted repository link or clone URL
+        // scopes credentials and repository listings to the instance itself.
+        const nextConfig = { ...connection.config, methodConfig: { ...methodConfig, instanceUrl: info.baseUrl } };
+        await db.update(toolConnections).set({ config: nextConfig, transportConfig: nextConfig, updatedAt: new Date() })
+          .where(and(eq(toolConnections.id, connection.id), eq(toolConnections.companyId, connection.companyId)));
+        connection.config = nextConfig;
+        connection.transportConfig = nextConfig;
+      }
       return [];
     }
     if (connection.transport === "mcp_remote")
@@ -7727,6 +7792,8 @@ export function toolAccessService(
         await discoverTools(connection, undefined, actor);
       } else if (isAgentMailConnection(connection)) {
         await validateAgentMailConnection(connection);
+      } else if (connection.transport === "rest_api" && gitHostConnectionProvider(connection)) {
+        await discoverTools(connection, undefined, actor);
       } else if (connection.transport === "mcp_remote") {
         const canProbeWithoutAuthorization =
           options.allowUnauthenticatedProbe === true &&
@@ -7765,6 +7832,8 @@ export function toolAccessService(
             ? "Browser Use API key is connected."
           : isAgentMailConnection(connection)
             ? "AgentMail API key is connected."
+          : connection.transport === "rest_api" && gitHostConnectionProvider(connection)
+            ? `${gitHostProviderLabel(gitHostConnectionProvider(connection)!)} access token is connected.`
             : connection.transport === "local_stdio"
               ? "Approved stdio template is ready."
               : "Remote MCP server responded to tools/list.",
@@ -12913,6 +12982,10 @@ export function toolAccessService(
       isGoogleSheetsRobotMethod || !method
         ? null
         : normalizeConnectionMethodConfig(method, input.configValues ?? asRecord(asRecord(retainedConnection?.config).methodConfig));
+    if (isGitHostConnectionProvider(galleryEntry?.slug) && typeof normalizedMethodConfig?.values.instanceUrl === "string") {
+      // Refuse unusable instance URLs before a draft connection stores the token.
+      assertGitHostInstanceUrl(galleryEntry.slug, normalizedMethodConfig.values.instanceUrl);
+    }
     const remoteUrlCredential =
       transport === "mcp_remote" && input.link
         ? splitRemoteUrlCredential(input.link)
@@ -13492,6 +13565,37 @@ export function toolAccessService(
       } else if (dedicatedAgentId) {
         // Managed OAuth creates the credential-bearing grant in the callback.
         // Keep the connection free of organization secrets from the outset.
+        // A pasted key (GitLab/Gitea access tokens) already exists: commit it
+        // straight to the agent's own grant, like the personal branch above.
+        if (credentialSecretRefs.length > 0) {
+          const [previousGrant] = await db.select().from(connectionGrants).where(and(
+            eq(connectionGrants.companyId, companyId),
+            eq(connectionGrants.connectionId, connectionRow.id),
+            eq(connectionGrants.kind, "agent"),
+            eq(connectionGrants.subjectAgentId, dedicatedAgentId),
+          )).limit(1);
+          const [agentGrant] = previousGrant
+            ? await db.update(connectionGrants).set({
+                credentialSecretRefs, status: "active", revokedAt: null, revokedByAgentId: null, revokedByUserId: null, updatedAt: new Date(),
+              }).where(eq(connectionGrants.id, previousGrant.id)).returning()
+            : await db.insert(connectionGrants).values({
+                companyId, connectionId: connectionRow.id, kind: "agent", subjectAgentId: dedicatedAgentId,
+                credentialSecretRefs, status: "active", isDefault: false,
+                createdByUserId: actor?.actorType === "user" ? actor.actorId ?? null : null,
+              }).returning();
+          if (!agentGrant) throw new Error("Failed to create agent connection grant");
+          if (revivedConnectionPrevious) revivedGrantMutation = { previous: previousGrant ?? null, current: agentGrant };
+          await db.insert(toolAccessAuditEvents).values({
+            companyId,
+            connectionId: connectionRow.id,
+            actorType: actor?.actorType === "user" ? "user" : "system",
+            actorId: actor?.actorId ?? null,
+            action: previousGrant ? "connection_grant.updated" : "connection_grant.created",
+            outcome: "success",
+            reasonCode: previousGrant ? "agent_identity_reconnected" : "agent_identity_created",
+            details: { kind: "agent", agentId: dedicatedAgentId, credentialSecretRefCount: credentialSecretRefs.length },
+          });
+        }
       } else {
         const organizationGrant = await ensureDefaultOrganizationGrant(
           connectionRow,
@@ -18220,7 +18324,7 @@ export function toolAccessService(
     // Repository discovery uses credential audiences, not connection-management
     // visibility. An administrator cannot browse another user's private repos.
     listProjectRepositories: async (companyId: string, userId: string | null, localTrusted = false) =>
-      toolAccessService(db).listGitHubRepositories(companyId, userId, localTrusted),
+      toolAccessService(db, options).listGitHubRepositories(companyId, userId, localTrusted),
 
     // Return identifiers, never credentials, so each attempted read can recheck its grant.
     githubReadConnectionIds: async (companyId: string, userId: string | null, localTrusted = false): Promise<string[]> => {
@@ -18305,9 +18409,10 @@ export function toolAccessService(
       let connectionCount = 0;
       let failedConnectionCount = 0;
       for (const connection of connections) {
+        const gitHost = gitHostConnectionInfo(connection);
         if (
           connection.status !== "active" ||
-          asRecord(connection.config).sourceTemplateKey !== "github"
+          (asRecord(connection.config).sourceTemplateKey !== "github" && !gitHost)
         )
           continue;
         const connectionGrants = grants.filter(
@@ -18349,6 +18454,13 @@ export function toolAccessService(
               fullName: string;
               private?: boolean;
             }>;
+            if (gitHost) {
+              const token = await gitHostConnectionToken(connection, actor, initialGrant);
+              const gitHostRows = await measureRunPhase("connectors.git_host.repositories", () =>
+                loadGitHostRepositories(gitHost, token, (url, init) => requestRemoteHttpEndpoint(url, init)));
+              for (const row of gitHostRows) mergeProjectRepository(repositories, row, connection.name, connection.id);
+              continue;
+            }
             if (
               initialGrant &&
               asRecord(asRecord(connection.config).oauth).connectorProfile ===

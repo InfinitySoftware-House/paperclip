@@ -2153,6 +2153,7 @@ function StandardConnectionSetupFlow({
       lockedAgentId={requestedAgentId}
       capabilities={galleryQuery.data?.capabilities}
       githubIdentity={entry?.slug === "github"}
+      gitIdentityProvider={entry?.slug === "gitlab" || entry?.slug === "gitea" ? entry.name : undefined}
       identityLoading={Boolean(automaticOAuthEntry) && directOAuthLookupPending}
       preserveAgentAccess={Boolean((automaticOAuthEntry && (resumableOAuthConnection || reconnectConnection)) || reconnectConnection?.connectionPurpose === "ai")}
       disabled={connectMutation.isPending || oauthStartMutation.isPending}
@@ -4224,6 +4225,7 @@ export function AccessStepContent({
   lockedAgentId,
   capabilities,
   githubIdentity = false,
+  gitIdentityProvider,
   submitLabel,
   continuesToProvider = false,
   identityLoading = false,
@@ -4254,6 +4256,8 @@ export function AccessStepContent({
     editableAgentIds?: string[];
   } | null;
   githubIdentity?: boolean;
+  /** GitLab/Gitea: the account wording GitHub uses, with this provider name. */
+  gitIdentityProvider?: string;
   submitLabel: string;
   /** Only show an external-handoff cue when this action starts provider OAuth. */
   continuesToProvider?: boolean;
@@ -4297,15 +4301,16 @@ export function AccessStepContent({
   const lockedAgentName = lockedAgentId
     ? allAgents.find((agent) => agent.id === lockedAgentId)?.name ?? "the requesting agent"
     : null;
-  const identityHeading = githubIdentity ? "Connect GitHub as" : "Which humans can use this credential?";
+  const gitIdentity = githubIdentity ? "GitHub" : gitIdentityProvider ?? null;
+  const identityHeading = gitIdentity ? `Connect ${gitIdentity} as` : "Which humans can use this credential?";
   const agentAccessHeading = grantKind === "agent"
-    ? "Which agent owns this GitHub account?"
-    : githubIdentity && grantKind === "user"
-      ? "Which agents may use your GitHub when you’re responsible?"
-      : githubIdentity
-        ? "Which agents may use the shared GitHub account?"
+    ? `Which agent owns this ${gitIdentity ?? "GitHub"} account?`
+    : gitIdentity && grantKind === "user"
+      ? `Which agents may use your ${gitIdentity} when you’re responsible?`
+      : gitIdentity
+        ? `Which agents may use the shared ${gitIdentity} account?`
         : "Which agents can use this connection?";
-  const agentAccessLabel = githubIdentity ? agentAccessHeading : "Which agents can use this connection?";
+  const agentAccessLabel = gitIdentity ? agentAccessHeading : "Which agents can use this connection?";
 
   return (
     <div className={bare ? "" : "mx-auto max-w-2xl"}>
@@ -4313,8 +4318,8 @@ export function AccessStepContent({
         <div className="divide-y divide-border">
           <section className="p-6">
             <h2 className="text-sm font-semibold text-foreground">{identityHeading}</h2>
-            {githubIdentity && grantKind === "agent" ? (
-              <p className="mt-2 text-sm text-muted-foreground">This agent uses this GitHub account for everyone’s work, instead of the person giving instructions.</p>
+            {gitIdentity && grantKind === "agent" ? (
+              <p className="mt-2 text-sm text-muted-foreground">This agent uses this {gitIdentity} account for everyone’s work, instead of the person giving instructions.</p>
             ) : null}
             {identityLoading ? (
               <div className="mt-4 grid gap-2 sm:grid-cols-2" aria-label="Loading connection identity">
@@ -4333,12 +4338,12 @@ export function AccessStepContent({
                 <div>
                   <div className="text-sm font-medium text-foreground">
                     {allowedGrantKinds[0] === "user"
-                      ? githubIdentity ? "My GitHub account" : "Just me"
+                      ? gitIdentity ? `My ${gitIdentity} account` : "Just me"
                       : allowedGrantKinds[0] === "agent"
                         ? "A dedicated account for an agent"
-                        : githubIdentity ? "Shared organization GitHub account (advanced)" : "Any human in the organization"}
+                        : gitIdentity ? `Shared organization ${gitIdentity} account (advanced)` : "Any human in the organization"}
                   </div>
-                  {githubIdentity ? (
+                  {gitIdentity ? (
                     <p className="mt-1 text-xs text-muted-foreground">
                       {allowedGrantKinds[0] === "user"
                         ? "Agents use it only for runs where you are the responsible person."
@@ -4351,7 +4356,7 @@ export function AccessStepContent({
               </div>
             ) : needsIdentityChoice ? (
               <RadioCardGroup
-                ariaLabel={githubIdentity ? identityHeading : "Which humans can use this credential?"}
+                ariaLabel={gitIdentity ? identityHeading : "Which humans can use this credential?"}
                 className="mt-4 sm:grid-cols-2"
                 value={grantKind}
                 onValueChange={(next) => {
@@ -4365,8 +4370,8 @@ export function AccessStepContent({
                 options={[
                   {
                     value: "user",
-                    title: githubIdentity ? "My GitHub account" : "Just me",
-                    description: githubIdentity
+                    title: gitIdentity ? `My ${gitIdentity} account` : "Just me",
+                    description: gitIdentity
                       ? "Agents use it only for runs where you are the responsible person."
                       : undefined,
                     icon: <UserRound className="h-4 w-4" aria-hidden="true" />,
@@ -4374,21 +4379,21 @@ export function AccessStepContent({
                   {
                     value: "agent",
                     title: "A dedicated account for an agent",
-                    description: githubIdentity
+                    description: gitIdentity
                       ? "That agent always uses this account, regardless of who starts the run."
                       : undefined,
                     icon: <Bot className="h-4 w-4" aria-hidden="true" />,
                   },
                   {
                     value: "organization",
-                    title: githubIdentity ? "Shared organization GitHub account (advanced)" : "Any human in the organization",
-                    description: githubIdentity
+                    title: gitIdentity ? `Shared organization ${gitIdentity} account (advanced)` : "Any human in the organization",
+                    description: gitIdentity
                       ? "Eligible agents use one shared credential, regardless of who starts the run."
                       : undefined,
                     icon: <UsersRound className="h-4 w-4" aria-hidden="true" />,
                     accessibleLabel: canCreateOrganizationGrant
-                      ? githubIdentity ? "Shared organization GitHub account (advanced)" : "Any human in the organization"
-                      : `${githubIdentity ? "Shared organization GitHub account (advanced)" : "Any human in the organization"}. Unavailable: ${capabilities?.organizationGrantReason ??
+                      ? gitIdentity ? `Shared organization ${gitIdentity} account (advanced)` : "Any human in the organization"
+                      : `${gitIdentity ? `Shared organization ${gitIdentity} account (advanced)` : "Any human in the organization"}. Unavailable: ${capabilities?.organizationGrantReason ??
                         "Only a connection manager can share this credential with the organization."}`,
                     tooltip: canCreateOrganizationGrant
                       ? undefined
@@ -4433,10 +4438,10 @@ export function AccessStepContent({
                 options={[
                   {
                     value: "specific",
-                    title: githubIdentity ? "Only agents I choose" : "Just agents I pick",
-                    description: githubIdentity
+                    title: gitIdentity ? "Only agents I choose" : "Just agents I pick",
+                    description: gitIdentity
                       ? grantKind === "user"
-                        ? "Only selected agents may use your GitHub when you’re responsible."
+                        ? `Only selected agents may use your ${gitIdentity} when you’re responsible.`
                         : "Only selected agents may use the shared account."
                       : undefined,
                     icon: <Bot className="h-4 w-4" aria-hidden="true" />,
@@ -4444,9 +4449,9 @@ export function AccessStepContent({
                   {
                     value: "all",
                     title: "Any agent",
-                    description: githubIdentity
+                    description: gitIdentity
                       ? grantKind === "user"
-                        ? "Every agent may use your GitHub when you’re responsible."
+                        ? `Every agent may use your ${gitIdentity} when you’re responsible.`
                         : "Every agent may use the shared account."
                       : undefined,
                     icon: <BotGroupIcon />,

@@ -72,6 +72,8 @@ import detectPort from "detect-port";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { logger } from "./middleware/logger.js";
+import { resolvePaperclipInstanceRoot } from "./home-paths.js";
+import { installTrustedCertificateAuthorities } from "./trusted-ca/index.js";
 import { setStartupRecoveryPhase } from "./startup-recovery-state.js";
 import {
   StartupRefusalError,
@@ -234,6 +236,12 @@ async function startServerWithDatabaseTeardown(
 ): Promise<StartedServer> {
   setStartupRecoveryPhase("starting");
   warnIfUnsupportedNodeVersion(process.versions.node, (message) => logger.warn(message));
+  // Extra CAs (for example a self-hosted Git host's) must be trusted before the first
+  // outbound TLS connection and before any child process copies the environment.
+  installTrustedCertificateAuthorities({
+    outputDir: resolve(resolvePaperclipInstanceRoot(), "runtime", "trusted-ca"),
+    log: { info: (message) => logger.info(message), warn: (message) => logger.warn(message) },
+  });
 
   // Tracing must be active (or have failed and logged) before the first DB
   // connection or the HTTP server exists — see instrumentation.ts.

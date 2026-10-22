@@ -22,6 +22,7 @@ import { connectionIntentService } from "../connection-intents.js";
 import { prepareConnectionInstructionDelivery } from "../connection-instructions.js";
 import { applyConnectorSkills, prepareConnectorSkillDelivery, resolveConnectorAssignments } from "../connector-runtime.js";
 import { resolveManagedGitHubIdentitySelection } from "../git-credentials.js";
+import { appendGitConfigEnv, buildGitHostAuthConfig, resolveGitHostCredentials } from "../git-host-credentials.js";
 import { resolveAssignedConnectionInstructionsForRun } from "../native-runtime/assigned-mcp-tools.js";
 import { recordFailedSkillPreparation, type NativeRunHistoricalSpan } from "../native-runtime/native-run-trace.js";
 import { collectRunFailureSecretValues } from "../run-failure-diagnostics.js";
@@ -42,6 +43,33 @@ const ACCEPTED_PLAN_CONVERSION_SKILL_KEY =
 
 type ManagedAiRuntime = Awaited<ReturnType<typeof prepareManagedAiRuntime>>;
 type EnvironmentSelection = Awaited<ReturnType<typeof selectHeartbeatEnvironment>>;
+
+/**
+ * Host-mode runs keep the operator's ambient Git and GitHub login and have no credential
+ * launcher. GitLab/Gitea connections installed for the company or this agent still apply:
+ * their host-scoped helpers are appended to the run environment, so every other host keeps
+ * its ambient helpers. Managed runs receive the same credentials per operation instead.
+ */
+export async function applyHostModeGitHostCredentials(
+  db: Db,
+  input: { companyId: string; agentId: string; runId: string; responsibleUserId: string | null; issueId: string | null },
+  env: Record<string, string>,
+): Promise<{ env: Record<string, string>; secretKeys: string[] }> {
+  const selections = await resolveGitHostCredentials(db, input.companyId, {
+    agentId: input.agentId,
+    responsibleUserId: input.responsibleUserId,
+    heartbeatRunId: input.runId,
+    issueId: input.issueId,
+    allowStandingDelegation: false,
+  });
+  for (const selection of selections) {
+    if (!selection.credential) {
+      logger.warn({ runId: input.runId, host: selection.host, reason: selection.error }, "git host credential unavailable for run");
+    }
+  }
+  const auth = buildGitHostAuthConfig(selections.flatMap((selection) => selection.credential ? [selection.credential] : []));
+  return { env: appendGitConfigEnv(env, auth), secretKeys: Object.keys(auth.env) };
+}
 
 /** Preparation and routing must use the same immutable mode as native recovery. */
 export function bindHeartbeatRunnerHomeMode(config: Record<string, unknown>, persistedExecution: unknown): Record<string, unknown> {

@@ -187,6 +187,14 @@ configuration fails closed.
 | `PAPERCLIP_SECRETS_MASTER_KEY_FILE` | `~/.paperclip/.../secrets/master.key` | Path to key file |
 | `PAPERCLIP_SECRETS_STRICT_MODE` | `false` | Require secret refs for sensitive env vars |
 
+## Trusted Certificate Authorities
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PAPERCLIP_TRUSTED_CA_CERTS` | (unset) | Extra CA certificates to trust, as PEM files or directories of `.pem`/`.crt`/`.cer` files separated by `:` (`;` on Windows). Added to the CAs compiled into the build. See `doc/TRUSTED-CERTIFICATES.md`. |
+
+When any extra CA is configured, the server sets `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE` and `GIT_SSL_CAINFO` for the processes it starts, pointing to files under `<instance>/runtime/trusted-ca/`.
+
 ## Agent Runtime (Injected into agent processes)
 
 These are set automatically by the server when invoking agents:

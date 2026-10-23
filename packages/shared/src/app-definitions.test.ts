@@ -885,7 +885,7 @@ describe("AppDefinition catalog", () => {
       "ticktick",
       "xero",
     ]);
-    expect(APP_STORE_DEFINITIONS).toHaveLength(82);
+    expect(APP_STORE_DEFINITIONS).toHaveLength(84);
     const connectableSlugs = new Set(
       CONNECTABLE_APP_DEFINITIONS.map((entry) => entry.slug),
     );
@@ -1270,6 +1270,30 @@ describe("AppDefinition catalog", () => {
       expect.stringContaining("consume organization credits"),
     ]);
   });
+  it("offers GitLab and Gitea as host-scoped Git token connections with dedicated agent identities", () => {
+    for (const slug of ["gitlab", "gitea"]) {
+      const app = getAppStoreDefinition(slug);
+      expect(app, slug).not.toBeNull();
+      expect(app!.methods).toHaveLength(1);
+      const [method] = app!.methods;
+      expect(method).toMatchObject({
+        key: "access-token",
+        purpose: "tool",
+        transport: "rest_api",
+        auth: "api_key",
+        grantKinds: ["organization", "user", "agent"],
+      });
+      const instanceUrl = method!.tenantFields?.find((field) => field.key === "instanceUrl");
+      expect(instanceUrl?.required).toBe(true);
+      const pattern = new RegExp(instanceUrl!.validation!.pattern!);
+      expect(pattern.test("https://git.example.com:3000/gitea")).toBe(true);
+      // Repository links and clone URLs are accepted; the server derives the instance base
+      // and refuses plain HTTP or inline credentials with a specific message.
+      expect(pattern.test("git@git.example.com:team/tool.git")).toBe(true);
+      expect(pattern.test("https://git.example.com/a b")).toBe(false);
+      expect(method!.credentialFields?.map((field) => field.key)).toEqual(["token"]);
+    }
+  });
   it("requires only reviewed provider or safety-boundary configuration on the default path", () => {
     const required = APP_DEFINITIONS.flatMap((app) =>
       app.methods.flatMap((method) =>
@@ -1283,6 +1307,9 @@ describe("AppDefinition catalog", () => {
     ).sort();
     expect(required).toEqual([
       "clickhouse:mcp-oauth:serviceId",
+      // The instance URL is the host boundary for the Git credential.
+      "gitea:access-token:instanceUrl",
+      "gitlab:access-token:instanceUrl",
       "honcho:mcp-api-key:workspaceId",
       "make:mcp-api-token:zone",
       "shopify:storefront-mcp:storeDomain",

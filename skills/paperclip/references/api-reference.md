@@ -780,9 +780,9 @@ When a CEO/manager task asks you to "set up a new project" and wire local + GitH
 
 For repository-based projects, prefer one atomic create with `repositoryIds` from
 `GET /api/companies/{companyId}/project-repositories`, `repositoryUrls` for existing
-GitHub repositories absent from that catalog, or both. These arrays support
-multiple repositories. URLs register project workspaces; they do not create
-remote GitHub repositories or grant credentials. Use HTTPS URLs without credentials.
+GitHub, GitLab or Gitea/Forgejo repositories (also self-hosted) absent from that catalog, or both.
+These arrays support multiple repositories. GitHub IDs are numeric; GitLab/Gitea IDs look like `gitlab:gitlab.example.com:42`.
+URLs register project workspaces; they do not create remote repositories or grant credentials. Use HTTPS URLs without credentials.
 Do not combine either array with an explicit `workspace`. Reuse the same
 `idempotencyKey` and body when retrying a creation.
 

@@ -92,7 +92,9 @@ Assert the relevant denied actor, owner, company or mode from Policy. Review the
 remaining operations before qualifying the whole capability.
 
 Gaps: Authorized initial selection works. Replacement of repositories on an existing
-project hard-requires board and needs a delegation decision.
+project hard-requires board and needs a delegation decision. The catalog spans GitHub,
+GitLab and Gitea connections; agents receive GitLab/Gitea Git credentials per host from
+their dedicated, responsible-user or company grant (see `doc/connections/GITLAB-GITEA.md`).
 
 ## `defaults`
 

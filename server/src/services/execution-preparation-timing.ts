@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { isSpanContextValid, ROOT_CONTEXT, SpanStatusCode, trace, type Context } from "@opentelemetry/api";
 
 type PreparationPhase = "environment_selection" | "execution_configuration" | "session"
-  | "workspace" | "github_environment" | "github_launchers" | "run_output"
+  | "workspace" | "github_environment" | "github_launchers" | "git_host_credentials" | "run_output"
   | "workspace_validation" | "runtime_services" | "instructions" | "runtime_selection"
   | "configuration_mentions" | "configuration_github_identity" | "configuration_secrets"
   | "configuration_ai_runtime" | "configuration_skills" | "configuration_connector_assignments"
@@ -57,6 +57,7 @@ export type ExecutionPhase =
   | "connectors.github.catalog" | "connectors.github.connections" | "connectors.github.grants"
   | "connectors.github.grant_members" | "connectors.github.membership"
   | "connectors.github.refresh" | "connectors.github.credentials" | "connectors.github.repositories"
+  | "connectors.git_host.repositories"
   | "connectors.github.grant_lock" | "connectors.github.grant_write" | "connectors.github.webhooks"
   | "connectors.github.refresh.transaction" | "connectors.github.refresh.transaction.entry"
   | "connectors.github.refresh.transaction.commit" | "connectors.github.refresh.transaction.rollback"

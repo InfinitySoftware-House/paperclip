@@ -2746,6 +2746,41 @@
       "reviewedAt": "2026-10-15",
       "liveProof": "not-run",
       "keyPermissions": "Create an organization key with the read, write, and delete permissions for the resources you intend to manage. Daytona toolbox access is available to every valid organization key, even without selected scopes. Some user or administration endpoints require provider user authentication and will reject an API key."
+    },
+    {
+      "app": "gitlab",
+      "method": "access-token",
+      "auth": "api_key",
+      "policy": "provider-key",
+      "requestedScopes": [],
+      "capability": "write",
+      "supportedActions": "No agent tool actions. Paperclip validates the token with GET /api/v4/user, lists member projects with GET /api/v4/projects for the project repository picker, and supplies the token to Git over HTTPS (clone, fetch, push) for the configured instance host only.",
+      "evidence": [
+        "https://docs.gitlab.com/user/profile/personal_access_tokens/",
+        "https://docs.gitlab.com/api/rest/authentication/",
+        "https://docs.gitlab.com/api/projects/"
+      ],
+      "reviewedAt": "2026-10-21",
+      "liveProof": "not-run",
+      "keyPermissions": "Grant read_api, read_repository and write_repository. Use read_repository alone for read-only agents; push then fails at GitLab. Project and group access tokens work for the repositories they cover.",
+      "evidenceLimit": "Reviewed against GitLab documentation only. Account-bound proof on GitLab.com and a self-managed instance remains outstanding."
+    },
+    {
+      "app": "gitea",
+      "method": "access-token",
+      "auth": "api_key",
+      "policy": "provider-key",
+      "requestedScopes": [],
+      "capability": "write",
+      "supportedActions": "No agent tool actions. Paperclip validates the token with GET /api/v1/user, lists accessible repositories with GET /api/v1/user/repos for the project repository picker, and supplies the token to Git over HTTPS (clone, fetch, push) for the configured instance host only.",
+      "evidence": [
+        "https://docs.gitea.com/development/api-usage",
+        "https://docs.gitea.com/development/oauth2-provider#scopes"
+      ],
+      "reviewedAt": "2026-10-21",
+      "liveProof": "not-run",
+      "keyPermissions": "Grant read:user and read/write repository permissions. Use repository read only for read-only agents; push then fails at Gitea. Forgejo uses the same token permissions.",
+      "evidenceLimit": "Reviewed against Gitea documentation only. Account-bound proof on Gitea, Forgejo and Codeberg remains outstanding."
     }
   ]
 }

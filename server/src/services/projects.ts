@@ -255,6 +255,11 @@ function toWorkspace(
   };
 }
 
+/** `githubRepositoryId` predates GitLab/Gitea and holds any provider's catalog repository ID. */
+function repositoryWorkspaceMetadata(repo: import("@paperclipai/shared").ProjectRepository): Record<string, unknown> {
+  return { githubRepositoryId: repo.id, ...(repo.provider ? { repositoryProvider: repo.provider } : {}) };
+}
+
 function deriveRepoNameFromRepoUrl(repoUrl: string | null): string | null {
   const raw = readNonEmptyString(repoUrl);
   if (!raw) return null;
@@ -915,7 +920,7 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
         const service = projectService(tx as unknown as Db, { captureWorkspaceUpdates: false });
         const project = await service.create(companyId, data);
         for (const repo of repositories) {
-          await service.createWorkspace(project.id, { name: repo.fullName, repoUrl: repo.url, metadata: { githubRepositoryId: repo.id } });
+          await service.createWorkspace(project.id, { name: repo.fullName, repoUrl: repo.url, metadata: repositoryWorkspaceMetadata(repo) });
         }
         return (await service.getById(project.id))!;
       });
@@ -933,7 +938,7 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
           if (typeof repoId === "string" && !ids.has(repoId)) {
             // Keep local/runtime workspace configuration when detaching source.
             if (workspace.cwd || workspace.remoteWorkspaceRef) {
-              const { githubRepositoryId: _id, ...metadata } = workspace.metadata!;
+              const { githubRepositoryId: _id, repositoryProvider: _provider, ...metadata } = workspace.metadata!;
               await service.updateWorkspace(projectId, workspace.id, { repoUrl: null, metadata });
             } else await service.removeWorkspace(projectId, workspace.id);
           }
@@ -948,8 +953,8 @@ export function projectService(db: Db, options: { captureWorkspaceUpdates?: bool
           }
           const legacy = existing.find((workspace) => !workspace.metadata?.githubRepositoryId && workspace.repoUrl?.replace(/\.git$/, "").replace(/\/$/, "").toLowerCase() === repo.url.toLowerCase());
           if (legacy) {
-            await service.updateWorkspace(projectId, legacy.id, { metadata: { ...legacy.metadata, githubRepositoryId: repo.id } });
-          } else await service.createWorkspace(projectId, { name: repo.fullName, repoUrl: repo.url, metadata: { githubRepositoryId: repo.id } });
+            await service.updateWorkspace(projectId, legacy.id, { metadata: { ...legacy.metadata, ...repositoryWorkspaceMetadata(repo) } });
+          } else await service.createWorkspace(projectId, { name: repo.fullName, repoUrl: repo.url, metadata: repositoryWorkspaceMetadata(repo) });
         }
         await tx.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, projectId));
         await recordProjectLifecycleEvent(tx as unknown as Db, project.companyId, projectId);

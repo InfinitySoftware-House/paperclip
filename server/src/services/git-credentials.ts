@@ -10,7 +10,18 @@ import {
   type Db,
 } from "@paperclipai/db";
 import { and, eq, inArray, or } from "drizzle-orm";
+import type { GitHostConnectionProvider } from "@paperclipai/shared";
 import { isGitHubDotCom } from "./github-fetch.js";
+import {
+  appendGitConfigEnv,
+  buildGitHostAuthConfig,
+  gitHostForRemoteUrl,
+  gitHostProviderLabel,
+  LEGACY_GIT_HOST_TOKEN_NAMES,
+  resolveGitHostCredentials,
+  resolveLegacyGitHostCredential,
+  type GitHostCredential,
+} from "./git-host-credentials.js";
 import { secretService } from "./secrets.js";
 import { toolAccessService } from "./tool-access.js";
 
@@ -20,6 +31,8 @@ import { toolAccessService } from "./tool-access.js";
  * names below (the same convention the GitHub external-object provider reads); this module
  * resolves it and turns it into a git invocation that authenticates clone/fetch against
  * github.com over HTTPS without ever placing the token in argv, URLs, or on disk.
+ * GitLab and Gitea remotes are resolved by `git-host-credentials.ts` from their Apps
+ * connections and authenticated the same way, scoped to the connection's instance host.
  *
  * The provider factory is deliberately the single seam for future credential sources (for
  * example a brokered GitHub connection): swap the factory, keep every call site unchanged.
@@ -61,6 +74,8 @@ export type GitAuthInvocation = {
   env: Record<string, string>;
   source: GitCredential["source"];
   secretName: string | null;
+  /** The hosting provider the credential belongs to; absent means GitHub. */
+  provider?: GitHostConnectionProvider;
 };
 
 /**
@@ -110,6 +125,17 @@ export function scrubGitCredentialText(text: string): string {
   return text
     .replace(/([a-z][a-z0-9+.-]*:\/\/)[^/@\s]+@/gi, "$1***@")
     .replace(/([a-z][a-z0-9+.-]*:\/\/[^\s"'?]*)\?[^\s"']*/gi, "$1?***");
+}
+
+export function buildGitHostAuthInvocation(credential: GitHostCredential): GitAuthInvocation {
+  const auth = buildGitHostAuthConfig([credential]);
+  return {
+    configArgs: auth.config.flatMap(([key, value]) => ["-c", `${key}=${value}`]),
+    env: appendGitConfigEnv({ GIT_TERMINAL_PROMPT: "0" }, auth),
+    source: credential.source,
+    secretName: credential.secretName,
+    provider: credential.provider,
+  };
 }
 
 export function buildGitAuthInvocation(credential: GitCredential): GitAuthInvocation {
@@ -172,10 +198,28 @@ const GIT_AUTH_FAILURE_PATTERN =
  */
 export function describeGitAuthFailure(input: {
   error: string;
-  used: { source: GitCredential["source"]; secretName: string | null } | null;
+  used: { source: GitCredential["source"]; secretName: string | null; provider?: GitHostConnectionProvider } | null;
+  /** Lets an unauthenticated failure point at the right provider's setup. */
+  repoUrl?: string;
 }): string | null {
   if (!GIT_AUTH_FAILURE_PATTERN.test(input.error)) {
     return null;
+  }
+  const gitHost = input.used ? null : input.repoUrl ? gitHostForRemoteUrl(input.repoUrl) : null;
+  const provider = input.used?.provider ?? (gitHost === "gitea.com" || gitHost === "codeberg.org" ? "gitea" : gitHost ? "gitlab" : undefined);
+  if (input.used && provider) {
+    const label = gitHostProviderLabel(provider);
+    const source = input.used.secretName
+      ? `the ${input.used.secretName} company-secret ${label} credential`
+      : input.used.source === "managed_connection" ? `the resolved ${label} connection` : `the server-environment ${label} credential`;
+    return `The operation authenticated with ${source}, which was rejected or lacks access to this repository.`;
+  }
+  if (gitHost && provider) {
+    const label = gitHostProviderLabel(provider);
+    const legacy = gitHost === "gitlab.com" || gitHost === "gitea.com"
+      ? `, or add a ${LEGACY_GIT_HOST_TOKEN_NAMES[provider][0]} company secret in Settings → Secrets`
+      : "";
+    return `No credential is configured for ${gitHost} — connect ${label} (or Gitea for Forgejo) in Apps for the company or this agent${legacy}, or configure a local checkout cwd for this project workspace.`;
   }
   if (input.used) {
     const label = input.used.secretName
@@ -263,7 +307,45 @@ export function createGitRemoteAuthProvider(
     return null;
   };
 
+  const gitHostAuth = new Map<string, Promise<GitAuthInvocation | null>>();
+  const resolveGitHostAuth = async (host: string): Promise<GitAuthInvocation | null> => {
+    // A run-bound operation uses the same trust gate as GitHub credential export: low-trust
+    // or unverified executions clone anonymously instead of receiving a token.
+    if (db && context?.heartbeatRunId && context.agentId) {
+      const { runAllowsGitCredentialExport } = await import("./github-operation-credentials.js");
+      if (!(await runAllowsGitCredentialExport(db, { companyId, runId: context.heartbeatRunId, agentId: context.agentId }))) {
+        return null;
+      }
+    }
+    const [selection] = db
+      ? await resolveGitHostCredentials(db, companyId, {
+          agentId: context?.agentId ?? null,
+          responsibleUserId: context?.responsibleUserId ?? null,
+          issueId: context?.issueId ?? null,
+          heartbeatRunId: context?.heartbeatRunId ?? null,
+        }, { onlyHost: host })
+      : [];
+    if (selection) {
+      // A connected host fails closed instead of falling through to another identity.
+      if (!selection.credential) throw new Error(selection.error ?? `${gitHostProviderLabel(selection.provider)} credentials are unavailable`);
+      return buildGitHostAuthInvocation(selection.credential);
+    }
+    const legacy = await resolveLegacyGitHostCredential(db, companyId, host, context ?? {}, { secrets, env });
+    return legacy ? buildGitHostAuthInvocation(legacy) : null;
+  };
+
   return async (remoteUrl: string) => {
+    const gitHost = gitHostForRemoteUrl(remoteUrl);
+    if (gitHost) {
+      let pending = gitHostAuth.get(gitHost);
+      if (!pending) {
+        pending = resolveGitHostAuth(gitHost);
+        gitHostAuth.set(gitHost, pending);
+        // Do not memoize a transient failure for the provider's lifetime.
+        pending.catch(() => gitHostAuth.delete(gitHost));
+      }
+      return pending;
+    }
     if (!isSupportedGitHubRemoteUrl(remoteUrl)) return null;
     if (db && context?.heartbeatRunId && context.agentId) {
       const [run] = await db.select({ contextId: heartbeatRuns.activeIdentityContextId }).from(heartbeatRuns).where(and(

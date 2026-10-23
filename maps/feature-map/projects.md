@@ -47,7 +47,7 @@ Manual: Create a project, add a task from its view, and reload. Verify the task 
 
 ### `repository-settings`
 
-Automated: [repository persistence](../../server/src/__tests__/project-repositories-persistence.test.ts) and [repository browser suite](../../tests/e2e/project-repositories.spec.ts) cover configured repository workflows.
+Automated: [repository persistence](../../server/src/__tests__/project-repositories-persistence.test.ts) and [repository browser suite](../../tests/e2e/project-repositories.spec.ts) cover configured repository workflows, including GitLab/Gitea catalog listing. [Git host credentials](../../server/src/__tests__/git-host-credentials.test.ts) and [Git host connections](../../server/src/__tests__/git-host-connections.test.ts) cover per-agent identity resolution and Apps setup; they do not prove a live GitLab or Gitea instance.
 
 Manual: Attach a small repository, save, and create a project task. Inspect the actual checkout/revision used by its run. Test an invalid repository and missing credentials without treating a saved URL as a working workspace.
 

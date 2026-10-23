@@ -12,9 +12,20 @@ describe("task repository acquisition authority", () => {
   it("normalizes HTTPS URLs and never accepts credentials, alternate hosts, or shell paths", () => {
     expect(resolveTaskRepository({ kind: "url", url: "https://github.com/team/source.git" }, [repository])).toMatchObject({ catalogRepositoryId: "123", repositoryIdentity: repository.url });
     expect(resolveTaskRepository({ kind: "url", url: "https://github.com/public/repo" }, [])).toMatchObject({ catalogRepositoryId: null });
-    for (const url of ["git@github.com:team/source", "https://token@github.com/team/source", "https://evil.example/team/source", "file:///tmp/source", "https://github.com/team/source?q=secret"]) {
-      expect(() => resolveTaskRepository({ kind: "url", url }, [])).toThrow(/HTTPS GitHub/);
+    for (const url of ["git@github.com:team/source", "https://token@github.com/team/source", "file:///tmp/source", "https://github.com/team/source?q=secret"]) {
+      expect(() => resolveTaskRepository({ kind: "url", url }, [])).toThrow(/HTTPS Git repository URL/);
     }
+    // Hosts outside public forges and connected GitLab/Gitea instances never reach a clone.
+    expect(() => resolveTaskRepository({ kind: "url", url: "https://evil.example/team/source" }, [])).toThrow(/not a known Git host/);
+  });
+  it("accepts public GitLab/Gitea URLs and self-hosted URLs only on a connected instance", () => {
+    expect(resolveTaskRepository({ kind: "url", url: "https://gitlab.com/group/sub/app.git" }, [])).toMatchObject({
+      repoUrl: "https://gitlab.com/group/sub/app", catalogRepositoryId: null,
+    });
+    const selfHosted = { id: "gitea:git.example.com:3000:7", fullName: "team/app", url: "https://git.example.com:3000/team/app", provider: "gitea" as const, connections: ["Gitea"] };
+    expect(resolveTaskRepository({ kind: "url", url: "https://git.example.com:3000/team/app.git" }, [selfHosted])).toMatchObject({ catalogRepositoryId: selfHosted.id });
+    expect(resolveTaskRepository({ kind: "url", url: "https://git.example.com:3000/team/other" }, [selfHosted])).toMatchObject({ catalogRepositoryId: null });
+    expect(() => resolveTaskRepository({ kind: "url", url: "https://git.example.com:3000/team/app" }, [])).toThrow(/not a known Git host/);
   });
   it("converges repository aliases into a stable contained path and rejects conflicting refs", () => {
     const source = resolveTaskRepository({ kind: "catalog", id: "123" }, [repository]);

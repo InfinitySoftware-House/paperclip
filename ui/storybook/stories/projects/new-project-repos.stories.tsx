@@ -31,7 +31,7 @@ export const AllAvailableRepos: Story = {
   name: "04 · Search personal + company repos (deduplicated)",
   play: async ({ canvasElement }) => {
     const screen = within(canvasElement.ownerDocument.body);
-    await userEvent.click(await screen.findByRole("button", { name: "Add GitHub repo" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Add repo" }));
     await expect(screen.getAllByRole("option").filter((option) => within(option).queryByText("papercool/web", { exact: true }))).toHaveLength(1);
     await expect(screen.queryByText("sam/private-project")).not.toBeInTheDocument();
   },
@@ -41,14 +41,14 @@ export const OneRepo: Story = { name: "06 · One selected repo", args: { initial
 export const MultipleRepos: Story = { name: "07 · Multiple selected repos", args: { initialRepoIds: ["201", "202", "203"] } };
 export const LoadingRepos: Story = { name: "08 · Loading repos", args: { initialState: "loading" }, play: async ({ canvasElement }) => {
   const screen = within(canvasElement.ownerDocument.body);
-  await userEvent.click(await screen.findByRole("button", { name: "Add GitHub repo" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Add repo" }));
 } };
 export const NoAccessibleRepos: Story = { name: "09 · Connected, no accessible repos", args: { initialState: "empty" }, play: LoadingRepos.play };
 export const RepoLoadFailed: Story = { name: "10 · Load failed, retry available", args: { initialState: "error" }, play: LoadingRepos.play };
 export const SearchNoResults: Story = { name: "11 · Search with no matches", play: async ({ canvasElement }) => {
   const screen = within(canvasElement.ownerDocument.body);
-  await userEvent.click(await screen.findByRole("button", { name: "Add GitHub repo" }));
-  await userEvent.type(screen.getByPlaceholderText("Search GitHub repos…"), "no-such-repository");
+  await userEvent.click(await screen.findByRole("button", { name: "Add repo" }));
+  await userEvent.type(screen.getByPlaceholderText("Search repos…"), "no-such-repository");
 } };
 
 export const ManySelectedRepos: Story = { name: "12 · Forty selected repos", args: { initialName: "Onboarding", initialRepoIds: crowdedRepoIds } };

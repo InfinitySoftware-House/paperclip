@@ -679,6 +679,23 @@
       "catalogVisible": true,
       "localAsset": "/brands/apps/daytona.svg",
       "darkAsset": "/brands/apps/daytona-dark.svg"
+    },
+    {
+      "slug": "gitlab",
+      "provider": "GitLab",
+      "catalogVisible": true,
+      "localAsset": "/brands/apps/gitlab.svg",
+      "sourceUrl": "https://gitlab.com/gitlab-org/gitlab-svgs/-/raw/main/illustrations/gitlab_logo.svg",
+      "retrievedAt": "2026-10-21"
+    },
+    {
+      "slug": "gitea",
+      "provider": "Gitea",
+      "catalogVisible": true,
+      "localAsset": "/brands/apps/gitea.svg",
+      "sourceUrl": "https://raw.githubusercontent.com/go-gitea/gitea/main/assets/logo.svg",
+      "retrievedAt": "2026-10-21",
+      "aliases": ["forgejo", "codeberg"]
     }
   ]
 }

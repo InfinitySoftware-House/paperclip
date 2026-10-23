@@ -4,7 +4,7 @@ import {
   updateIssueSchema, upsertIssueDocumentSchema, updateAgentSchema, upsertAgentInstructionsFileSchema,
   aiRuntimeConnectionBindingSchema, createProjectSchema, updateProjectSchema,
   companySkillCreateSchema, companySkillUpdateSchema, companySkillFileUpdateSchema,
-  createIssueWorkProductSchema, updateIssueWorkProductSchema,
+  createIssueWorkProductSchema, updateIssueWorkProductSchema, PROJECT_REPOSITORY_ID_PATTERN,
 } from "@paperclipai/shared";
 import { McpApiError, company, task, requestId, pathId, object, pick, rows, taskFields, documentFields, type Capability } from "./contracts.js";
 
@@ -145,7 +145,7 @@ export const expandedMcpCapabilities: Capability[] = [
   },
   {
     name: "paperclip_set_project_repositories", configure: true, destructive: true, description: "Replace a project's repository selection with IDs from paperclip_list_project_repositories. Requires configuration consent and normal repository access.",
-    schema: z.object({ ...project, requestId, repositoryIds: z.array(z.string().regex(/^\d+$/)).max(100) }).strict(),
+    schema: z.object({ ...project, requestId, repositoryIds: z.array(z.string().regex(PROJECT_REPOSITORY_ID_PATTERN)).max(100) }).strict(),
     run: async (p, a, api) => ({ project: projectOutput(await api(p, "PUT", `/projects/${pathId(a.projectId)}/repositories`, { repositoryIds: a.repositoryIds })) }),
   },
   {

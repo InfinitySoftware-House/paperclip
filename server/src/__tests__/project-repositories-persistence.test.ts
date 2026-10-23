@@ -141,6 +141,51 @@ const support = await getEmbeddedPostgresTestSupport();
     expect(request).toHaveBeenCalledTimes(3);
   });
 
+  it("lists GitLab and Gitea repositories from their instances and stores the provider on selection", async () => {
+    const [company] = await db.insert(companies).values({ name: "Git hosts", issuePrefix: "GITH" }).returning();
+    await db.insert(companyMemberships).values({ companyId: company.id, principalType: "user", principalId: "alice", membershipRole: "member" });
+    async function gitHost(name: string, provider: "gitlab" | "gitea", instanceUrl: string, kind: "user" | "organization") {
+      const [app] = await db.insert(toolApplications).values({ companyId: company.id, name, type: "mcp_stdio" }).returning();
+      const definition = kind === "user"
+        ? (await db.insert(userSecretDefinitions).values({ companyId: company.id, name, key: name }).returning())[0]
+        : undefined;
+      const [secret] = await db.insert(companySecrets).values({ companyId: company.id, name, key: name,
+        scope: definition ? "user" : "company", ownerUserId: definition ? "alice" : null, userSecretDefinitionId: definition?.id }).returning();
+      if (definition) personalTokens.set(definition.id, `${name}-token`);
+      const [conn] = await db.insert(toolConnections).values({ companyId: company.id, applicationId: app.id, name, uid: name, status: "active", enabled: true,
+        transport: "rest_api", authKind: "api_key", credentialPolicy: kind === "user" ? "per_user" : "shared",
+        config: { sourceTemplateKey: provider, connectionMethodKey: "access-token", methodConfig: { instanceUrl } } }).returning();
+      await db.insert(connectionGrants).values({ companyId: company.id, connectionId: conn.id, kind, subjectUserId: kind === "user" ? "alice" : null, isDefault: kind === "organization",
+        credentialSecretRefs: [{ secretId: secret.id, configPath: "credentials.token", versionSelector: "latest" }] });
+      return secret.id;
+    }
+    const companyToken = await gitHost("company-gitlab", "gitlab", "https://gitlab.example.com", "organization");
+    await gitHost("my-gitea", "gitea", "https://git.example.com:3000", "user");
+    const remoteHttpRequest = vi.fn(async (url: string, init?: RequestInit) => {
+      const authorization = new Headers(init?.headers).get("authorization");
+      if (url.startsWith("https://gitlab.example.com/api/v4/projects")) {
+        expect(authorization).toBe(`Bearer ${companyToken}`);
+        return Response.json([{ id: 5, path_with_namespace: "group/sub/app", namespace: { kind: "group" } }]);
+      }
+      if (url.startsWith("https://git.example.com:3000/api/v1/user/repos")) {
+        expect(authorization).toBe("token my-gitea-token");
+        return Response.json([{ id: 9, full_name: "alice/tool", private: true }]);
+      }
+      return new Response("unexpected", { status: 500 });
+    });
+    const result = await toolAccessService(db, { remoteHttpRequest } as never).listProjectRepositories(company.id, "alice");
+    expect(result).toMatchObject({ connectionCount: 2, failedConnectionCount: 0 });
+    expect(result.repositories).toEqual([
+      { id: "gitea:git.example.com:3000:9", fullName: "alice/tool", url: "https://git.example.com:3000/alice/tool", provider: "gitea", private: true, connections: ["my-gitea"], connectionIds: [expect.any(String)] },
+      { id: "gitlab:gitlab.example.com:5", fullName: "group/sub/app", url: "https://gitlab.example.com/group/sub/app", provider: "gitlab", ownerType: "organization", connections: ["company-gitlab"], connectionIds: [expect.any(String)] },
+    ]);
+    const created = await projectService(db).createWithRepositories(company.id, { name: "Git host project" }, result.repositories);
+    expect(created.workspaces.map((workspace) => workspace.metadata).sort((a, b) => String(a?.githubRepositoryId).localeCompare(String(b?.githubRepositoryId)))).toEqual([
+      { githubRepositoryId: "gitea:git.example.com:3000:9", repositoryProvider: "gitea" },
+      { githubRepositoryId: "gitlab:gitlab.example.com:5", repositoryProvider: "gitlab" },
+    ]);
+  });
+
   it("rolls back the project if a later repository insert fails", async () => {
     const svc = projectService(db);
     await expect(svc.createWithRepositories(companyId, { name: "Rollback" }, [repo("7"), { ...repo("8"), fullName: "invalid" + String.fromCharCode(0) + "name" }])).rejects.toThrow();

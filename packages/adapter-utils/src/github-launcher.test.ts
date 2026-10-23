@@ -63,6 +63,42 @@ describe("managed GitHub launchers", () => {
     } });
   }, 15_000); // broker-offline retries the transport twice per command before it falls back
 
+  it("appends brokered GitLab/Gitea host helpers and drops any other configuration", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "paperclip-git-host-launcher-"));
+    cleanups.push(() => rm(root, { recursive: true, force: true }));
+    const bin = path.join(root, "managed");
+    await mkdir(bin);
+    await writeFile(path.join(bin, "git"), githubLauncherSource(), { mode: 0o700 });
+    const helper = `!f() { test "$1" = get && printf 'username=oauth2\\npassword=%s\\n' "$PAPERCLIP_GIT_HOST_TOKEN_0"; }; f`;
+    const server = createServer((_req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({
+        status: "absent", env: {},
+        gitHosts: {
+          config: [
+            ["credential.https://gitlab.example.com.helper", ""],
+            ["credential.https://gitlab.example.com.helper", helper],
+            ["core.pager", "must-not-apply"],
+          ],
+          env: { PAPERCLIP_GIT_HOST_TOKEN_0: "glpat-brokered", GH_TOKEN: "must-not-apply" },
+        },
+      }));
+    });
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    cleanups.push(() => new Promise<void>(resolve => server.close(() => resolve())));
+    const { port } = server.address() as { port: number };
+    const env = { ...process.env, ...githubBrokerEnvironment({ PAPERCLIP_GIT_HOST_TOKEN_0: "stale-host-token" }, { url: `http://127.0.0.1:${port}`, token: "run-capability" }),
+      PATH: `${bin}:${process.env.PATH}` };
+    const fill = async (host: string) => {
+      const child = exec(path.join(bin, "git"), ["credential", "fill"], { env, cwd: root });
+      child.child.stdin!.end(`protocol=https\nhost=${host}\n\n`);
+      return child.then(({ stdout }) => /^password=(.*)$/m.exec(stdout)?.[1] ?? null, () => null);
+    };
+    expect(await fill("gitlab.example.com")).toBe("glpat-brokered");
+    expect(await fill("github.com")).toBeNull();
+    await expect(exec(path.join(bin, "git"), ["config", "--get", "core.pager"], { env, cwd: root })).rejects.toThrow();
+  });
+
   it("explains unavailable access while allowing local work without credentials", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "paperclip-github-diagnostic-"));
     cleanups.push(() => rm(root, {recursive:true,force:true}));

@@ -384,6 +384,7 @@ heartbeat.prepare.workspace_repository_admission
           connectors.github.refresh.transaction.commit / rollback
         connectors.github.webhooks                 (existing parallel binding calls)
       connectors.github.credentials / repositories (legacy or unmanaged connection)
+      connectors.git_host.repositories             (GitLab/Gitea connection pagination)
   workspace.repository.fs_prepare
     workspace.repository.ignore_rules
   workspace.repository.publication                  (one per concrete receipt)

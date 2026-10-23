@@ -136,6 +136,12 @@ describe("heartbeat task markdown rendering", () => {
       expect(markdown).not.toContain("PAPERCLIP_API_KEY");
     });
 
+    it("names the folder a file sits in, and omits it at the root", () => {
+      const markdown = buildPaperclipTaskMarkdown({ issue, projectFiles: [{ ...file(1), folder: "docs/specs" }, file(2)] })!;
+      expect(markdown).toContain('"filename":"notes-1.md","folder":"docs/specs"');
+      expect(markdown).toContain('"filename":"notes-2.md","contentType"');
+    });
+
     it("is omitted from a compact resume delta and when there are none", () => {
       expect(buildPaperclipTaskMarkdown({ issue, includeDescription: false, projectFiles: [file(1)] })).not.toContain("Project reference files");
       expect(buildPaperclipTaskMarkdown({ issue, projectFiles: [] })).not.toContain("Project reference files");

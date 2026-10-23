@@ -1,20 +1,37 @@
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import type { Db } from "@paperclipai/db";
+import {
+  createProjectFileFolderSchema,
+  moveProjectAttachmentSchema,
+  updateProjectFileFolderSchema,
+} from "@paperclipai/shared";
 import type { StorageService } from "../storage/types.js";
 import { accessService, logActivity, projectService } from "../services/index.js";
 import { projectAttachmentService } from "../services/project-attachments.js";
 import {
   formatAttachmentSize,
+  GENERIC_ATTACHMENT_CONTENT_TYPES,
+  inferImageContentTypeFromFilename,
   isAllowedContentType,
   isInlineAttachmentContentType,
+  matchesContentType,
   MAX_ATTACHMENT_BYTES,
   normalizeUploadAttachmentContentType,
+  PROJECT_FILE_IMAGE_TYPES,
+  SVG_CONTENT_TYPE,
 } from "../attachment-types.js";
 import { logger } from "../middleware/logger.js";
+import { validate } from "../middleware/validate.js";
+import { sanitizeSvgBuffer } from "../svg-sanitizer.js";
 import { assertCompanyAccess, getAccessibleResource, getActorInfo } from "./authz.js";
 
-const SVG_CONTENT_TYPE = "image/svg+xml";
+const FOLDER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Project files take every common image format, whatever the deployment allowlist says. */
+function isAllowedProjectFileContentType(contentType: string) {
+  return isAllowedContentType(contentType) || matchesContentType(contentType, [...PROJECT_FILE_IMAGE_TYPES]);
+}
 
 function withContentPath<T extends { id: string }>(attachment: T) {
   return { ...attachment, contentPath: `/api/project-attachments/${attachment.id}/content` };
@@ -63,6 +80,103 @@ export function projectAttachmentRoutes(db: Db, storage: StorageService) {
     });
   }
 
+  async function logProjectActivity(
+    req: Request,
+    companyId: string,
+    projectId: string,
+    action: string,
+    details: Record<string, unknown>,
+  ) {
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      agentApiKeyId: actor.agentApiKeyId,
+      action,
+      entityType: "project",
+      entityId: projectId,
+      details,
+    });
+  }
+
+  /** Resolve a folder the actor may change, or answer the request and return null. */
+  async function getWritableFolder(req: Request, res: Response) {
+    const folder = await getAccessibleResource(
+      req, res, svc.getFolder(req.params.folderId as string), "Folder not found");
+    if (!folder) return null;
+    const target = { id: folder.projectId, companyId: folder.companyId };
+    if (!(await assertProjectReadAllowed(req, res, target))) return null;
+    if (!(await assertProjectWriteAllowed(req, res, target))) return null;
+    return folder;
+  }
+
+  router.get("/projects/:id/file-folders", async (req, res) => {
+    const project = await getAccessibleResource(req, res, projects.getById(req.params.id as string), "Project not found");
+    if (!project) return;
+    if (!(await assertProjectReadAllowed(req, res, project))) return;
+    res.json(await svc.listFolders(project.id));
+  });
+
+  router.post(
+    "/companies/:companyId/projects/:projectId/file-folders",
+    validate(createProjectFileFolderSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      const project = await projects.getById(req.params.projectId as string);
+      if (!project || project.companyId !== companyId) {
+        res.status(404).json({ error: "Project not found" });
+        return;
+      }
+      if (!(await assertProjectReadAllowed(req, res, project))) return;
+      if (!(await assertProjectWriteAllowed(req, res, project))) return;
+
+      const folder = await svc.createFolder({ projectId: project.id, parentId: req.body.parentId ?? null, name: req.body.name });
+      await logProjectActivity(req, companyId, project.id, "project.file_folder_created", {
+        folderId: folder.id,
+        parentId: folder.parentId,
+        name: folder.name,
+      });
+      res.status(201).json(folder);
+    },
+  );
+
+  router.patch("/project-file-folders/:folderId", validate(updateProjectFileFolderSchema), async (req, res) => {
+    const folder = await getWritableFolder(req, res);
+    if (!folder) return;
+    const updated = await svc.updateFolder(folder.id, { name: req.body.name, parentId: req.body.parentId });
+    await logProjectActivity(req, folder.companyId, folder.projectId, "project.file_folder_updated", {
+      folderId: folder.id,
+      ...(req.body.name !== undefined ? { previousName: folder.name, name: updated.name } : {}),
+      ...(req.body.parentId !== undefined ? { previousParentId: folder.parentId, parentId: updated.parentId } : {}),
+    });
+    res.json(updated);
+  });
+
+  router.delete("/project-file-folders/:folderId", async (req, res) => {
+    const folder = await getWritableFolder(req, res);
+    if (!folder) return;
+    const removed = await svc.removeFolder(folder.id);
+    if (!removed) {
+      res.status(404).json({ error: "Folder not found" });
+      return;
+    }
+    for (const file of removed.files) {
+      await storage.deleteObject(file.companyId, file.objectKey).catch((err) =>
+        logger.warn({ err, attachmentId: file.id }, "storage delete failed while removing project folder"));
+    }
+    await logProjectActivity(req, folder.companyId, folder.projectId, "project.file_folder_removed", {
+      folderId: folder.id,
+      name: folder.name,
+      removedFolderCount: removed.folderCount,
+      removedFileCount: removed.files.length,
+    });
+    res.json({ ok: true, removedFileCount: removed.files.length });
+  });
+
   router.get("/projects/:id/attachments", async (req, res) => {
     const project = await getAccessibleResource(req, res, projects.getById(req.params.id as string), "Project not found");
     if (!project) return;
@@ -104,15 +218,31 @@ export function projectAttachmentRoutes(db: Db, storage: StorageService) {
       res.status(422).json({ error: "File is empty" });
       return;
     }
-    const contentType = normalizeUploadAttachmentContentType({
+    const rawFolderId = typeof req.body?.folderId === "string" ? req.body.folderId.trim() : "";
+    if (rawFolderId && !FOLDER_ID_PATTERN.test(rawFolderId)) {
+      res.status(400).json({ error: "Invalid folderId" });
+      return;
+    }
+    let contentType = normalizeUploadAttachmentContentType({
       contentType: file.mimetype,
       originalFilename: file.originalname,
-      isAllowedContentType,
+      isAllowedContentType: isAllowedProjectFileContentType,
     });
-    // SVG is not in the default allowlist and is never sanitized here.
-    if (!isAllowedContentType(contentType)) {
+    if (GENERIC_ATTACHMENT_CONTENT_TYPES.includes(contentType)) {
+      contentType = inferImageContentTypeFromFilename(file.originalname) ?? contentType;
+    }
+    if (!isAllowedProjectFileContentType(contentType)) {
       res.status(422).json({ error: `Unsupported file type: ${contentType}` });
       return;
+    }
+    let body = file.buffer;
+    if (contentType === SVG_CONTENT_TYPE) {
+      const sanitized = sanitizeSvgBuffer(file.buffer);
+      if (!sanitized) {
+        res.status(422).json({ error: "SVG could not be sanitized" });
+        return;
+      }
+      body = sanitized;
     }
 
     const actor = getActorInfo(req);
@@ -121,13 +251,14 @@ export function projectAttachmentRoutes(db: Db, storage: StorageService) {
       namespace: `projects/${project.id}`,
       originalFilename: file.originalname || null,
       contentType,
-      body: file.buffer,
+      body,
     });
 
     let attachment: Awaited<ReturnType<typeof svc.create>>;
     try {
       attachment = await svc.create({
         projectId: project.id,
+        folderId: rawFolderId || null,
         provider: stored.provider,
         objectKey: stored.objectKey,
         contentType: stored.contentType,
@@ -138,9 +269,10 @@ export function projectAttachmentRoutes(db: Db, storage: StorageService) {
         createdByUserId: actor.actorType === "user" ? actor.actorId : null,
       });
     } catch (err) {
-      // Only a project that vanished mid-upload is a definite rejection; any
-      // other failure is ambiguous, so keep the object rather than risk a live row.
-      if ((err as { status?: number }).status === 404) {
+      // Only a project or folder rejected before the insert is a definite
+      // failure; any other is ambiguous, so keep the object rather than risk a live row.
+      const status = (err as { status?: number }).status;
+      if (status === 404 || status === 422) {
         await storage.deleteObject(companyId, stored.objectKey).catch((cleanupErr) =>
           logger.warn({ cleanupErr, companyId, projectId: project.id }, "failed to remove orphaned project file"));
       }
@@ -162,6 +294,7 @@ export function projectAttachmentRoutes(db: Db, storage: StorageService) {
         originalFilename: attachment.originalFilename,
         contentType: attachment.contentType,
         byteSize: attachment.byteSize,
+        folderId: attachment.folderId,
       },
     });
     res.status(201).json(withContentPath(attachment));
@@ -175,13 +308,15 @@ export function projectAttachmentRoutes(db: Db, storage: StorageService) {
 
     const object = await storage.getObject(attachment.companyId, attachment.objectKey);
     const mediaType = attachment.contentType.split(";", 1)[0]!.trim().toLowerCase();
-    const inline = mediaType !== SVG_CONTENT_TYPE && isInlineAttachmentContentType(mediaType)
-      && req.query.download !== "true";
+    const inline = isInlineAttachmentContentType(mediaType) && req.query.download !== "true";
     res.attachment(attachment.originalFilename ?? "attachment");
     res.setHeader("Content-Type", mediaType.startsWith("text/") ? `${mediaType}; charset=utf-8` : mediaType);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
-    if (!inline) res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
+    // SVG is sanitized on upload and still rendered without scripts.
+    if (!inline || mediaType === SVG_CONTENT_TYPE) {
+      res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:");
+    }
     res.setHeader(
       "Content-Disposition",
       String(res.getHeader("Content-Disposition")).replace(/^attachment;/, `${inline ? "inline" : "attachment"};`),
@@ -190,6 +325,24 @@ export function projectAttachmentRoutes(db: Db, storage: StorageService) {
     object.stream.on("error", next);
     res.on("close", () => object.stream.destroy());
     object.stream.pipe(res);
+  });
+
+  router.patch("/project-attachments/:attachmentId", validate(moveProjectAttachmentSchema), async (req, res) => {
+    const attachment = await getAccessibleResource(
+      req, res, svc.getById(req.params.attachmentId as string), "Attachment not found");
+    if (!attachment) return;
+    const target = { id: attachment.projectId, companyId: attachment.companyId };
+    if (!(await assertProjectReadAllowed(req, res, target))) return;
+    if (!(await assertProjectWriteAllowed(req, res, target))) return;
+
+    const moved = await svc.moveAttachment(attachment.id, req.body.folderId);
+    await logProjectActivity(req, attachment.companyId, attachment.projectId, "project.attachment_moved", {
+      attachmentId: attachment.id,
+      originalFilename: attachment.originalFilename,
+      previousFolderId: attachment.folderId,
+      folderId: moved.folderId,
+    });
+    res.json(withContentPath(moved));
   });
 
   router.delete("/project-attachments/:attachmentId", async (req, res) => {

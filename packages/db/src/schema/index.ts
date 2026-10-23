@@ -124,6 +124,7 @@ export { assets } from "./assets.js";
 export { runnerApiResponseReservations } from "./runner_api_response_reservations.js";
 export { issueAttachments } from "./issue_attachments.js";
 export { projectAttachments } from "./project_attachments.js";
+export { projectFileFolders } from "./project_file_folders.js";
 export { documents } from "./documents.js";
 export { documentRevisions } from "./document_revisions.js";
 export { issueDocuments } from "./issue_documents.js";

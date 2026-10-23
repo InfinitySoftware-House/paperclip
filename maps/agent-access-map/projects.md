@@ -162,17 +162,25 @@ API: `present` — representative operation IDs:
 - `GET /api/projects/{id}/attachments`.
 - `POST /api/companies/{companyId}/projects/{projectId}/attachments`.
 - `GET /api/project-attachments/{id}/content`.
+- `PATCH /api/project-attachments/{id}` (move to a folder).
 - `DELETE /api/project-attachments/{id}`.
+- `GET /api/projects/{id}/file-folders`.
+- `POST /api/companies/{companyId}/projects/{projectId}/file-folders`.
+- `PATCH /api/project-file-folders/{id}` and `DELETE /api/project-file-folders/{id}`.
 
 Agent access: `partial` — the assignment text lists the task project's files. Agents with
 a Paperclip API key download them from the content path (also in `projectAttachments` of
 `GET /api/issues/{id}/heartbeat-context`); native runners with attachment access read them
 with `list_task_attachments` (`projectFiles`) and `read_task_attachment`. Sandboxed runs may
-read the list and content routes only. Upload and delete need the same grant as project
-workspace writes.
+read the list and content routes only. Each listed file carries its `folder` path (for
+example `docs/specs`) so agents see how the board organized them. Upload, move, delete and
+folder changes need the same grant as project workspace writes.
 
 Policy: Reads need `project:read` (also enforced on asset content); writes need
-`project:write_workspace`. Types and size follow the shared attachment allowlist.
+`project:write_workspace`. Types and size follow the shared attachment allowlist, plus
+common image formats (WebP, AVIF, SVG, BMP, TIFF, ICO, HEIC, JXL) that project files always
+accept; SVG is sanitized on upload and served with a sandbox CSP. Deleting a folder deletes
+its subfolders and files.
 
 Evidence: `source-only` — [routes](../../server/src/routes/project-attachments.ts) and
 [access check](../../server/src/services/asset-content-access.ts).

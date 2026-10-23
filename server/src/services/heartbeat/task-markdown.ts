@@ -74,6 +74,8 @@ export function buildPaperclipTaskMarkdown(input: {
   projectFiles?: Array<{
     id: string;
     filename: string;
+    // Slash-joined folder path inside the project's files; null at the root.
+    folder?: string | null;
     contentType: string;
     byteSize: number;
     contentPath: string;
@@ -376,6 +378,7 @@ export function buildPaperclipTaskMarkdown(input: {
           `- ${JSON.stringify({
             id: file.id,
             filename: file.filename,
+            folder: file.folder || undefined,
             contentType: file.contentType,
             byteSize: file.byteSize,
             contentPath: input.nativeRunner ? undefined : file.contentPath,

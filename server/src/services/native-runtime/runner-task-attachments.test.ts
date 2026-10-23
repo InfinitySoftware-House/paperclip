@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { activityLog, agents, assets, companies, createDb, heartbeatRuns, issueAttachments, issues, projectAttachments, projects, runnerApiResponseReservations } from "@paperclipai/db";
+import { activityLog, agents, assets, companies, createDb, heartbeatRuns, issueAttachments, issues, projectAttachments, projectFileFolders, projects, runnerApiResponseReservations } from "@paperclipai/db";
 import { startEmbeddedPostgresTestDatabase } from "../../__tests__/helpers/embedded-postgres.js";
 import type { StorageService } from "../../storage/types.js";
 import { TaskAttachmentReadCache } from "./runner-task-attachments.js";
@@ -61,18 +61,20 @@ describe("Dot assigned-task attachment reading", () => {
     const [theirs] = await db.insert(projects).values({ companyId: f.companyId, name: "Theirs" }).returning();
     await db.update(issues).set({ projectId: mine!.id }).where(eq(issues.id, f.issueId));
     const projectBody = Buffer.from("project handbook");
-    const add = async (projectId: string, name: string) => {
+    const [docs] = await db.insert(projectFileFolders).values({ companyId: f.companyId, projectId: mine!.id, name: "docs" }).returning();
+    const [specs] = await db.insert(projectFileFolders).values({ companyId: f.companyId, projectId: mine!.id, parentId: docs!.id, name: "specs" }).returning();
+    const add = async (projectId: string, name: string, folderId: string | null = null) => {
       const [asset] = await db.insert(assets).values({ companyId: f.companyId, provider: "local_disk", objectKey: `${f.companyId}/${name}`,
         originalFilename: name, contentType: "text/markdown", byteSize: projectBody.length, sha256: sha(projectBody) }).returning();
-      const [row] = await db.insert(projectAttachments).values({ companyId: f.companyId, projectId, assetId: asset!.id }).returning();
+      const [row] = await db.insert(projectAttachments).values({ companyId: f.companyId, projectId, assetId: asset!.id, folderId }).returning();
       return row!;
     };
-    const own = await add(mine!.id, "handbook.md"), other = await add(theirs!.id, "secret.md");
+    const own = await add(mine!.id, "handbook.md", specs!.id), other = await add(theirs!.id, "secret.md");
     f.getObject.mockImplementation(async () => ({ stream: Readable.from([projectBody]) }));
 
     const listed = await f.call("list_task_attachments") as { attachments: unknown[]; projectFiles: Array<{ attachmentId: string; filename: string }> };
     expect(listed.attachments).toHaveLength(1);
-    expect(listed.projectFiles).toEqual([expect.objectContaining({ attachmentId: own.id, filename: "handbook.md" })]);
+    expect(listed.projectFiles).toEqual([expect.objectContaining({ attachmentId: own.id, filename: "handbook.md", folder: "docs/specs" })]);
     // A later page never repeats the project files.
     expect(await f.call("list_task_attachments", { after: f.attachment.id })).not.toHaveProperty("projectFiles");
 

@@ -2,6 +2,7 @@ import type {
   Project,
   ProjectAccessMember,
   ProjectAttachment,
+  ProjectFileFolder,
   ProjectRepositoryOptions,
   ProjectWorkspace,
   WorkspaceOperation,
@@ -22,12 +23,23 @@ function projectPath(id: string, companyId?: string, suffix = "") {
 
 export const projectsApi = {
   listAttachments: (id: string) => api.get<ProjectAttachment[]>(`/projects/${encodeURIComponent(id)}/attachments`),
-  uploadAttachment: (companyId: string, projectId: string, file: File) => {
+  uploadAttachment: (companyId: string, projectId: string, file: File, folderId?: string | null) => {
     const form = new FormData();
+    // Multer reads fields in order, so the folder must precede the file.
+    if (folderId) form.append("folderId", folderId);
     form.append("file", file);
     return api.postForm<ProjectAttachment>(`/companies/${companyId}/projects/${projectId}/attachments`, form);
   },
+  moveAttachment: (attachmentId: string, folderId: string | null) =>
+    api.patch<ProjectAttachment>(`/project-attachments/${attachmentId}`, { folderId }),
   deleteAttachment: (attachmentId: string) => api.delete<{ ok: true }>(`/project-attachments/${attachmentId}`),
+  listFileFolders: (id: string) => api.get<ProjectFileFolder[]>(`/projects/${encodeURIComponent(id)}/file-folders`),
+  createFileFolder: (companyId: string, projectId: string, input: { name: string; parentId?: string | null }) =>
+    api.post<ProjectFileFolder>(`/companies/${companyId}/projects/${projectId}/file-folders`, input),
+  updateFileFolder: (folderId: string, input: { name?: string; parentId?: string | null }) =>
+    api.patch<ProjectFileFolder>(`/project-file-folders/${folderId}`, input),
+  deleteFileFolder: (folderId: string) =>
+    api.delete<{ ok: true; removedFileCount: number }>(`/project-file-folders/${folderId}`),
   repositoryOptions: (companyId: string) => api.get<ProjectRepositoryOptions>(`/companies/${companyId}/project-repositories`),
   setRepositories: (id: string, repositoryIds: string[]) => api.put<Project>(projectPath(id, undefined, "/repositories"), { repositoryIds }),
   list: (companyId: string, opts: { includeArchived?: boolean } = {}) => {

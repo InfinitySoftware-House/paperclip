@@ -17,6 +17,8 @@ export interface ProjectAttachment {
   companyId: string;
   projectId: string;
   assetId: string;
+  /** Folder holding the file; null when it sits at the project's root. */
+  folderId: string | null;
   contentType: string;
   byteSize: number;
   sha256: string;
@@ -26,6 +28,17 @@ export interface ProjectAttachment {
   createdAt: Date;
   updatedAt: Date;
   contentPath: string;
+}
+
+export interface ProjectFileFolder {
+  id: string;
+  companyId: string;
+  projectId: string;
+  /** Parent folder; null for a top-level folder. */
+  parentId: string | null;
+  name: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface ProjectAccessMember {

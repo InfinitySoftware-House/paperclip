@@ -17,7 +17,7 @@ import type { TrustPresetResolution } from "../trust-preset-resolver.js";
 import { liveVoiceExecutionGuidance } from "../voice/voice-execution-guidance.js";
 import { buildPaperclipWakePayload, PAPERCLIP_WAKE_PAYLOAD_KEY, type createHeartbeatRunPreparation } from "./run-preparation.js";
 import { buildPaperclipTaskMarkdown } from "./task-markdown.js";
-import { projectAttachmentService } from "../project-attachments.js";
+import { projectAttachmentService, projectFolderPaths } from "../project-attachments.js";
 import { logger } from "../../middleware/logger.js";
 
 type RunPreparation = ReturnType<typeof createHeartbeatRunPreparation>;
@@ -206,16 +206,23 @@ export async function prepareHeartbeatTaskContext(db: Db, input: HeartbeatTaskCo
   // Reference files the board uploaded to the task's project. A failure to read
   // them must not stop the run, but it is logged rather than hidden.
   const projectFiles = issueRef?.projectId && !isConversation(issueContext)
-    ? await projectAttachmentService(db).list(issueRef.projectId)
-        .then((rows) => rows
-          .filter((row) => row.companyId === agent.companyId)
-          .map((row) => ({
-            id: row.id,
-            filename: row.originalFilename?.trim() || "file",
-            contentType: row.contentType,
-            byteSize: row.byteSize,
-            contentPath: `/api/project-attachments/${row.id}/content`,
-          })))
+    ? await Promise.all([
+        projectAttachmentService(db).list(issueRef.projectId),
+        projectAttachmentService(db).listFolders(issueRef.projectId),
+      ])
+        .then(([rows, folders]) => {
+          const folderPaths = projectFolderPaths(folders);
+          return rows
+            .filter((row) => row.companyId === agent.companyId)
+            .map((row) => ({
+              id: row.id,
+              filename: row.originalFilename?.trim() || "file",
+              folder: (row.folderId && folderPaths.get(row.folderId)) || null,
+              contentType: row.contentType,
+              byteSize: row.byteSize,
+              contentPath: `/api/project-attachments/${row.id}/content`,
+            }));
+        })
         .catch((err) => {
           logger.warn({ err, runId: run.id, projectId: issueRef.projectId }, "could not list project files for the task context");
           return [];

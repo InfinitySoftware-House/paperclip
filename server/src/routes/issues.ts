@@ -240,7 +240,7 @@ import type {
   taskWatchdogService,
 } from "../services/task-watchdogs.js";
 import { logger } from "../middleware/logger.js";
-import { projectAttachmentService } from "../services/project-attachments.js";
+import { projectAttachmentService, projectFolderPaths } from "../services/project-attachments.js";
 import {
   badRequest,
   conflict,
@@ -8964,9 +8964,13 @@ export function issueRoutes(
       recoveryActionsSvc.getActiveForIssue(issue.companyId, issue.id),
     ]);
     const visibleProject = await visibleIssueProject(req, project);
-    const projectAttachments = visibleProject
-      ? await projectAttachmentsSvc.list(visibleProject.id)
-      : [];
+    const [projectAttachments, projectFileFolders] = visibleProject
+      ? await Promise.all([
+          projectAttachmentsSvc.list(visibleProject.id),
+          projectAttachmentsSvc.listFolders(visibleProject.id),
+        ])
+      : [[], []];
+    const projectFolderPathById = projectFolderPaths(projectFileFolders);
     const recoveryActionsByRelationIssue = await relationRecoveryActionMap(
       recoveryActionsSvc,
       issue.companyId,
@@ -9074,6 +9078,7 @@ export function issueRoutes(
       projectAttachments: projectAttachments.map((a) => ({
         id: a.id,
         filename: a.originalFilename,
+        folder: (a.folderId && projectFolderPathById.get(a.folderId)) || null,
         contentType: a.contentType,
         byteSize: a.byteSize,
         contentPath: `/api/project-attachments/${a.id}/content`,

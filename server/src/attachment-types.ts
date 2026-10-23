@@ -128,6 +128,55 @@ export function inferOfficeAttachmentContentTypeFromFilename(
   return null;
 }
 
+/**
+ * Image formats project reference files accept on top of the deployment
+ * allowlist. SVG uploads are sanitized before they are stored.
+ */
+export const PROJECT_FILE_IMAGE_TYPES: readonly string[] = [
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/pjpeg",
+  "image/webp",
+  "image/gif",
+  "image/apng",
+  "image/avif",
+  "image/bmp",
+  "image/x-ms-bmp",
+  "image/tiff",
+  "image/x-icon",
+  "image/vnd.microsoft.icon",
+  "image/heic",
+  "image/heif",
+  "image/jxl",
+  SVG_CONTENT_TYPE,
+];
+
+const IMAGE_CONTENT_TYPES_BY_EXTENSION: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  jfif: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+  apng: "image/apng",
+  avif: "image/avif",
+  bmp: "image/bmp",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+  ico: "image/x-icon",
+  heic: "image/heic",
+  heif: "image/heif",
+  jxl: "image/jxl",
+  svg: SVG_CONTENT_TYPE,
+};
+
+/** Browsers send some image formats (AVIF, HEIC, JXL, ...) without a MIME type. */
+export function inferImageContentTypeFromFilename(filename: string | null | undefined): string | null {
+  const match = /\.([a-z0-9]+)$/.exec((filename ?? "").trim().toLowerCase());
+  return (match && IMAGE_CONTENT_TYPES_BY_EXTENSION[match[1]!]) ?? null;
+}
+
 export function normalizeUploadAttachmentContentType(input: {
   contentType: string | null | undefined;
   originalFilename?: string | null;

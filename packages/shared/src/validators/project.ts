@@ -147,4 +147,35 @@ export const addProjectAccessMemberSchema = z.object({
 
 export type AddProjectAccessMember = z.infer<typeof addProjectAccessMemberSchema>;
 
+/** A single path segment: agents see folders as `a/b/file.pdf` paths. */
+export const projectFileFolderNameSchema = z
+  .string()
+  .trim()
+  .min(1, "Folder name is required")
+  .max(120)
+  .refine((name) => !/[\\/]/.test(name), "Folder name cannot contain / or \\")
+  .refine((name) => name !== "." && name !== "..", "Folder name cannot be . or ..");
+
+export const createProjectFileFolderSchema = z.object({
+  name: projectFileFolderNameSchema,
+  parentId: z.string().guid().nullable().optional(),
+});
+
+export type CreateProjectFileFolder = z.infer<typeof createProjectFileFolderSchema>;
+
+export const updateProjectFileFolderSchema = z
+  .object({
+    name: projectFileFolderNameSchema.optional(),
+    parentId: z.string().guid().nullable().optional(),
+  })
+  .refine((value) => value.name !== undefined || value.parentId !== undefined, "Nothing to update");
+
+export type UpdateProjectFileFolder = z.infer<typeof updateProjectFileFolderSchema>;
+
+export const moveProjectAttachmentSchema = z.object({
+  folderId: z.string().guid().nullable(),
+});
+
+export type MoveProjectAttachment = z.infer<typeof moveProjectAttachmentSchema>;
+
 export type ProjectExecutionWorkspacePolicy = z.infer<typeof projectExecutionWorkspacePolicySchema>;

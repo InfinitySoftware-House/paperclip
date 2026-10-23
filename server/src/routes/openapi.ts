@@ -89,6 +89,9 @@ import {
   createProjectSchema,
   updateProjectSchema,
   addProjectAccessMemberSchema,
+  createProjectFileFolderSchema,
+  updateProjectFileFolderSchema,
+  moveProjectAttachmentSchema,
   createProjectWorkspaceSchema,
   updateProjectWorkspaceSchema,
   // Company
@@ -8258,7 +8261,7 @@ registry.registerPath({
   method: "post",
   path: "/api/companies/{companyId}/projects/{projectId}/attachments",
   tags: ["projects"],
-  summary: "Upload a reference file to a project (multipart, field 'file')",
+  summary: "Upload a reference file to a project (multipart, field 'file', optional field 'folderId' before it)",
   request: { params: z.object({ companyId: z.string(), projectId: z.string() }) },
   responses: { 201: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound, 422: r.unprocessable },
 });
@@ -8270,6 +8273,60 @@ registry.registerPath({
   summary: "Download a project file",
   request: { params: z.object({ attachmentId: z.string() }) },
   responses: { 200: { description: "File content" }, 401: r.unauthorized, 404: r.notFound },
+});
+
+registry.registerPath({
+  method: "patch",
+  path: "/api/project-attachments/{attachmentId}",
+  tags: ["projects"],
+  summary: "Move a project file to a folder (null for the project root)",
+  request: { params: z.object({ attachmentId: z.string() }), body: jsonBody(moveProjectAttachmentSchema) },
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound, 422: r.unprocessable },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/projects/{id}/file-folders",
+  tags: ["projects"],
+  summary: "List the folders of a project's files",
+  request: { params: z.object({ id: z.string() }) },
+  responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/companies/{companyId}/projects/{projectId}/file-folders",
+  tags: ["projects"],
+  summary: "Create a folder for project files",
+  request: {
+    params: z.object({ companyId: z.string(), projectId: z.string() }),
+    body: jsonBody(createProjectFileFolderSchema),
+  },
+  responses: {
+    201: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound, 409: r.conflict,
+    422: r.unprocessable,
+  },
+});
+
+registry.registerPath({
+  method: "patch",
+  path: "/api/project-file-folders/{folderId}",
+  tags: ["projects"],
+  summary: "Rename or move a project file folder",
+  request: { params: z.object({ folderId: z.string() }), body: jsonBody(updateProjectFileFolderSchema) },
+  responses: {
+    200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound, 409: r.conflict,
+    422: r.unprocessable,
+  },
+});
+
+registry.registerPath({
+  method: "delete",
+  path: "/api/project-file-folders/{folderId}",
+  tags: ["projects"],
+  summary: "Delete a project file folder with its subfolders and files",
+  request: { params: z.object({ folderId: z.string() }) },
+  responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
 });
 
 registry.registerPath({

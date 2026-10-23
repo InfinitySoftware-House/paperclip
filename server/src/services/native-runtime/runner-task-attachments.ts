@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { and, asc, eq, gt, sql } from "drizzle-orm";
-import { assets, issueAttachments, issues, projectAttachments, type Db } from "@paperclipai/db";
+import { assets, issueAttachments, issues, projectAttachments, projectFileFolders, type Db } from "@paperclipai/db";
 import { z } from "zod";
 import { getStorageService } from "../../storage/index.js";
 import type { StorageService } from "../../storage/types.js";
 import { logActivity } from "../activity-log.js";
+import { projectFolderPaths } from "../project-attachments.js";
 
 const MAX_READ_BYTES = 16 * 1024 * 1024;
 const PAGE_BYTES = 12000;
@@ -70,7 +71,7 @@ function scope(binding: Binding) {
   return and(eq(issueAttachments.companyId, binding.companyId), eq(issueAttachments.issueId, binding.issueId));
 }
 const projectColumns = { attachmentId: projectAttachments.id, sourceCommentId: sql<string | null>`null`,
-  filename: assets.originalFilename, contentType: assets.contentType, byteSize: assets.byteSize, sha256: assets.sha256 };
+  folderId: projectAttachments.folderId, filename: assets.originalFilename, contentType: assets.contentType, byteSize: assets.byteSize, sha256: assets.sha256 };
 /** The project of the bound task, or null when it has none. */
 async function taskProjectId(db: Db, binding: Binding) {
   const [row] = await db.select({ projectId: issues.projectId }).from(issues)
@@ -90,8 +91,15 @@ export async function listTaskAttachments(db: Db, binding: Binding, after?: stri
         .where(and(eq(projectAttachments.companyId, binding.companyId), eq(projectAttachments.projectId, projectId)))
         .orderBy(asc(projectAttachments.id)).limit(50)
     : [];
+  // Folder paths let the agent see how the board organized the files.
+  const folderPaths = projectRows.some(row => row.folderId)
+    ? projectFolderPaths(await db.select({ id: projectFileFolders.id, parentId: projectFileFolders.parentId,
+      name: projectFileFolders.name }).from(projectFileFolders)
+      .where(and(eq(projectFileFolders.companyId, binding.companyId), eq(projectFileFolders.projectId, projectId!))))
+    : new Map<string, string>();
   return { attachments: page.map(row => ({ ...row, readable: row.byteSize <= MAX_READ_BYTES })),
-    ...(projectId ? { projectFiles: projectRows.map(row => ({ ...row, readable: row.byteSize <= MAX_READ_BYTES })) } : {}),
+    ...(projectId ? { projectFiles: projectRows.map(({ folderId, ...row }) => ({ ...row,
+      folder: (folderId && folderPaths.get(folderId)) || null, readable: row.byteSize <= MAX_READ_BYTES })) } : {}),
     nextAfter: rows.length > 50 ? page.at(-1)!.attachmentId : null, maximumReadBytes: MAX_READ_BYTES };
 }
 async function source(db: Db, binding: Binding, attachmentId: string) {

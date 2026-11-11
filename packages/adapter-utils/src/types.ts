@@ -730,6 +730,8 @@ export interface CreateConfigValues {
   adapterType: string;
   codexPermissionMode?: "never" | "on-request" | "untrusted";
   codexLegacySandboxBypass?: boolean;
+  /** Pass env vars whose names contain key/secret/token to Codex shell commands. */
+  codexExposeSecretEnvToShell?: boolean;
   paperclipRunnerLifecycleMode?: "per_turn" | "warm";
   paperclipRunnerIdleTimeoutMs?: number;
   cwd: string;

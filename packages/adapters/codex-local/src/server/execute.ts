@@ -602,6 +602,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       : DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
   );
   const command = asString(config.command, "codex");
+  const exposeSecretEnvToShell = config.exposeSecretEnvToShell === true;
   const model = asString(config.model, "");
 
   const workspaceContext = parseObject(context.paperclipWorkspace);
@@ -1296,8 +1297,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         const shellKeys = [...new Set([
           "PATH", "HOME", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR", "TEMP", "TMP", "CODEX_HOME",
           // Keep Codex's default secret-name exclusions except for the scoped
-          // Paperclip API token used by the agent skill. Never include host env.
-          ...Object.keys(env).filter(key => key === "PAPERCLIP_API_KEY" || !/key|secret|token/i.test(key)),
+          // Paperclip API token used by the agent skill, unless the operator
+          // opted this agent into secret env access. Never include host env.
+          ...Object.keys(env).filter(key =>
+            exposeSecretEnvToShell || key === "PAPERCLIP_API_KEY" || !/key|secret|token/i.test(key)),
           ...identityNames,
         ])];
         args.unshift("-c", "features.shell_snapshot=false", "-c", 'shell_environment_policy.inherit="all"', "-c", "shell_environment_policy.ignore_default_excludes=true",

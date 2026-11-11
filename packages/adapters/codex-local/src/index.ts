@@ -228,6 +228,7 @@ Core fields:
 - search (boolean, optional): run codex with --search
 - fastMode (boolean, optional): enable Codex Fast mode; supported on GPT-6 (astra/sol/luna), GPT-6.1 Sol, GPT-5.6 (sol/terra/luna), GPT-5.5, GPT-5.4 and passed through for manual model IDs
 - dangerouslyBypassApprovalsAndSandbox (boolean, optional): run with bypass flag
+- exposeSecretEnvToShell (boolean, optional): pass run environment variables whose names contain key, secret or token (for example GITEA_TOKEN or PAPERCLIP_GIT_HOST_TOKEN_<n>) to the agent's shell commands. Off by default; Paperclip otherwise keeps Codex's secret-name exclusions. Host environment variables are never passed.
 - command (string, optional): defaults to "codex"
 - extraArgs (string[], optional): additional CLI args
 - env (object, optional): KEY=VALUE environment variables

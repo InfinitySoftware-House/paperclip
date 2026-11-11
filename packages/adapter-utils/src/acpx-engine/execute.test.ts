@@ -697,6 +697,23 @@ describe("shared ACPX engine runtime behavior", () => {
     expect(JSON.stringify(config)).not.toContain("assigned-tool-token");
   });
 
+  it("passes configured secret-named env vars to Codex shells when the agent opts in", async () => {
+    const { meta } = await runExecutor({
+      agent: "codex",
+      exposeSecretEnvToShell: true,
+      env: { MY_SERVICE_TOKEN: "assigned-tool-token", PAPERCLIP_GIT_HOST_TOKEN_0: "git-host-token" },
+    }, {
+      authToken: "assigned-run-token",
+      agentIdentity: { keyId: "sha256:test", publicKeyPem: "public", privateKeyPem: "private" },
+    });
+    const config = JSON.parse(String((meta[0]?.env as Record<string, string>).CODEX_CONFIG));
+    expect(config.shell_environment_policy.include_only).toEqual(expect.arrayContaining([
+      "MY_SERVICE_TOKEN", "PAPERCLIP_GIT_HOST_TOKEN_0", "PAPERCLIP_API_KEY", "PAPERCLIP_AGENT_PRIVATE_KEY",
+    ]));
+    expect(JSON.stringify(config)).not.toContain("assigned-tool-token");
+    expect(JSON.stringify(config)).not.toContain("git-host-token");
+  });
+
   it("forwards arbitrary Codex model IDs verbatim without picker-dependent session config", async () => {
     const arbitraryModel = "gpt-999-test-does-not-exist";
     const { configOptions, meta } = await runExecutor({

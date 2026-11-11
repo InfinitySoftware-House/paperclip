@@ -827,6 +827,20 @@ export function CodexLocalConfigFields({
                 : mark("adapterConfig", "fastMode", v)
             }
           />
+          <ToggleField
+            label="Expose secret env vars to shell"
+            hint={help.exposeSecretEnvToShell}
+            checked={
+              isCreate
+                ? Boolean(values!.codexExposeSecretEnvToShell)
+                : eff("adapterConfig", "exposeSecretEnvToShell", config.exposeSecretEnvToShell === true)
+            }
+            onChange={(v) =>
+              isCreate
+                ? set!({ codexExposeSecretEnvToShell: v })
+                : mark("adapterConfig", "exposeSecretEnvToShell", v)
+            }
+          />
           {fastModeEnabled && (
             <div className="rounded-md border border-amber-300/70 bg-amber-50/80 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
               {fastModeMessage}

@@ -118,7 +118,7 @@ describe("codex execute — outbound auth copy-back restore contribution", () =>
     );
   }
 
-  async function runTeardown(input: { sandboxAuth: string; hostAuth: string; onProviderStopped?: () => Promise<void>; withIdentity?: boolean }) {
+  async function runTeardown(input: { sandboxAuth: string; hostAuth: string; onProviderStopped?: () => Promise<void>; withIdentity?: boolean; exposeSecretEnvToShell?: boolean }) {
     const rootDir = await mkdtemp(
       path.join(os.tmpdir(), "paperclip-codex-copyback-e2e-"),
     );
@@ -157,6 +157,7 @@ describe("codex execute — outbound auth copy-back restore contribution", () =>
       config: {
         command: "codex",
         engine: "cli",
+        ...(input.exposeSecretEnvToShell ? { exposeSecretEnvToShell: true } : {}),
         // External CODEX_HOME (outside the managed company tree) so no managed
         // seeding rewrites auth.json before teardown; equals the shared host home.
         env: { CODEX_HOME: sharedHostHome, ...(input.withIdentity ? { MY_SERVICE_TOKEN: "assigned-tool-token" } : {}) },
@@ -203,6 +204,16 @@ describe("codex execute — outbound auth copy-back restore contribution", () =>
     expect(keys).not.toContain("DATABASE_URL");
     expect(keys).not.toContain("HOST_DATABASE_PASSWORD");
     expect(commandArgs.join(" ")).not.toContain("assigned-run-token");
+    expect(commandArgs.join(" ")).not.toContain("assigned-tool-token");
+  });
+
+  it("passes configured secret-named env vars to CLI shells when the agent opts in, never host env", async () => {
+    vi.stubEnv("HOST_DATABASE_PASSWORD", "host-password");
+    const { commandArgs } = await runTeardown({ sandboxAuth: "{}", hostAuth: "{}", withIdentity: true, exposeSecretEnvToShell: true });
+    const policy = commandArgs.find(arg => arg.startsWith("shell_environment_policy.include_only="));
+    const keys = JSON.parse(policy!.slice(policy!.indexOf("=") + 1));
+    expect(keys).toEqual(expect.arrayContaining(["MY_SERVICE_TOKEN", "PAPERCLIP_API_KEY", "PAPERCLIP_AGENT_PRIVATE_KEY"]));
+    expect(keys).not.toContain("HOST_DATABASE_PASSWORD");
     expect(commandArgs.join(" ")).not.toContain("assigned-tool-token");
   });
 
